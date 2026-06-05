@@ -318,6 +318,94 @@ body.lite-mode .lite-only {
   line-height: 1.3;
 }
 
+.info-graph-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: #2e3d58;
+  line-height: 1.35;
+}
+
+.info-graph-table th,
+.info-graph-table td {
+  border: 1px solid #d5e0f2;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.info-graph-table th {
+  background: #eef4ff;
+  color: #274f9f;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.info-graph-table tbody tr:nth-child(even) {
+  background: #f8fbff;
+}
+
+.info-graph-table td:first-child {
+  font-weight: 700;
+  color: #274f9f;
+  white-space: nowrap;
+}
+
+.info-graph-table td:nth-child(2) {
+  width: 26%;
+}
+
+.info-graph-table td:nth-child(3) {
+  width: 48%;
+}
+
+.info-class-cell {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.info-class-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.info-class-item {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.info-class-term {
+  font-weight: 600;
+  font-size: 11px;
+  color: #3d5a8a;
+  line-height: 1.35;
+  padding-top: 1px;
+}
+
+.info-class-detail {
+  font-size: 12px;
+  color: #2e3d58;
+  line-height: 1.35;
+}
+
+.info-class-sublist {
+  margin: 0;
+  padding-left: 14px;
+}
+
+.info-class-sublist li {
+  margin: 0 0 2px;
+}
+
+.info-class-sublist li:last-child {
+  margin-bottom: 0;
+}
+
 .info-close-btn {
   position: absolute;
   top: 10px;

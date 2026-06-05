@@ -8,24 +8,10 @@ const sections = [
 
 const infoDataSection = {
   title: "Data sources",
-  bullets: [],
-};
-
-const infoObservationsSection = {
-  title: "Observations",
   bullets: [
     "METAR/SPECI data acquired from the ADAM database: January 1, 2000 to December 31, 2024.",
     "GPATS lightning data acquired from the ADAM database: January 1, 2009 to December 31, 2013.",
     "WZ lightning data acquired from the ADAM database: January 1, 2014 to December 31, 2024.",
-  ],
-};
-
-const infoLiteFiltersSection = {
-  title: "Lite filters",
-  bullets: [
-    "Season filter only. Charts aggregate all climate-driver states (ENSO, IOD, SAM).",
-    "Wind rose summary uses all hours; hourly mode selects one hour at a time.",
-    "Fog/low-cloud day-type toggles filter rain days, non-rain days, or all days.",
   ],
 };
 
@@ -78,118 +64,149 @@ const infoSectionOverview = {
   },
 };
 
+const infoFogRule = [
+  "Explicit fog present-weather code",
+  "Or inferred: spread < 2 °C, 10-min precip < 0.2 mm, visibility < 1.0 km",
+];
+
+const infoLowCloudBins = "Broken/overcast ceiling bins: 2000–1500, 1500–1000, 1000–500, <500 ft";
+
+const infoRainDayRule =
+  "Rain/drizzle/shower/thunder present-weather, or daily precip (09:00 UTC) > 0.2 mm";
+
+const infoThunderDayRule = "≥1 lightning strike within 8 km of aerodrome (from 2009)";
+
+const infoSmokeDustRule = "Smoke, dust, sand, or volcanic-ash present-weather";
+
 const infoFigureDetails = {
   wind_rose: {
     title: "Wind Rose",
-    bullets: [
-      "Shows relative frequency of wind by direction sector and speed bin.",
-      "Wind direction is grouped into directional sectors and wind speed into bins, then normalized to percent of filtered observations.",
+    description: "Relative frequency of wind by compass direction and wind-speed band.",
+    classification: [
+      { term: "Direction", detail: "16 sectors (22.5° bins)" },
+      { term: "Speed", detail: "0–1, 1–5, 5–10, 10–15, 15–22, 22+ kt" },
+      { term: "Count", detail: "One per observation; % of filtered sample per sector" },
     ],
   },
   rain_thunder: {
     title: "Rain/Thunder by Month",
-    bullets: [
-      "Monthly bars show percent of days classified as rain days and thunderstorm days.",
-      "Rain-day logic: any BoM day with RA/DZ/SH/TS weather tokens or PRCP_FM_09 > 0.2.",
-      "Thunder-day logic: any BoM day with at least one lightning strike within 8 km of aerodrome reference point; thunder averages are restricted to 2009 onward.",
+    description: "Monthly percentage of rain days and thunderstorm days.",
+    classification: [
+      { term: "Rain day", detail: infoRainDayRule },
+      { term: "Thunder day", detail: infoThunderDayRule },
     ],
   },
   temp_dewpoint: {
     title: "Temperature & Dewpoint",
-    bullets: [
-      "Shows monthly climatological max/min temperature and dewpoint behavior for the selected filters.",
-      "Values are monthly grouped means from filtered observations; secondary axis is used for precipitation context where applicable.",
+    description: "Monthly climatological maximum and minimum air temperature and dewpoint.",
+    classification: [
+      { term: "Source", detail: "METAR/SPECI air temperature and dewpoint" },
+      { term: "Aggregation", detail: "Monthly means from filtered observations" },
+      { term: "Secondary axis", detail: "Monthly precipitation (where shown)" },
     ],
   },
   fog_low_cloud: {
     title: "Fog/Low Cloud Frequency",
-    bullets: [
-      "Shows monthly frequency of fog and low cloud threshold categories.",
-      "Fog logic: explicit FG token OR inferred fog when (AIR_TEMP - DWPT) < 2 C, PRCP_10 < 0.2, and visibility < 1.0 km (VSBY or AWS_VSBY).",
-      "Cloud classification uses cloud-base bins: 2000-1500 ft, 1500-1000 ft, 1000-500 ft, and <500 ft; rain/non-rain mode toggles change denominator.",
+    description: "Monthly frequency of fog and low-cloud ceiling-height categories.",
+    classification: [
+      { term: "Fog", detail: infoFogRule },
+      { term: "Low cloud", detail: infoLowCloudBins },
+      { term: "Denominator", detail: "All, rain, or non-rain days (filter)" },
     ],
   },
   gale_weather_split: {
     title: "Gale Weather Split",
-    bullets: [
-      "Monthly gale climatology split into No wx, SHRA, and TS categories.",
-      "Gale logic: WND_SPD > 17.49 m/s (34 kt) OR MAX_WND_GUST_10 > 21.09 m/s (41 kt).",
-      "Category logic: TS if lightning is within 8 km and +/-10 minutes of observation; else SHRA if SH+RA weather coding or PRCP_10 > 0.2; else No wx.",
+    description: "Monthly gale frequency split by associated weather type.",
+    classification: [
+      { term: "Gale", detail: "Sustained > 17.49 m/s (34 kt) or gust > 21.09 m/s (41 kt)" },
+      { term: "With thunder", detail: "Lightning within 8 km ±10 min of observation" },
+      { term: "With shower/rain", detail: "Shower+rain code or 10-min precip > 0.2 mm" },
+      { term: "Otherwise", detail: "No significant weather" },
     ],
   },
   monthly_precip: {
     title: "Monthly Precipitation Occurrence",
-    bullets: [
-      "Shows monthly rain and thunderstorm-day climatology under the active filters.",
-      "Rain-day logic: any BoM day with RA/DZ/SH/TS weather tokens or PRCP_FM_09 > 0.2.",
-      "Thunder-day logic: any BoM day with at least one lightning strike within 8 km of the aerodrome reference point.",
+    description: "Monthly rain-day and thunderstorm-day climatology.",
+    classification: [
+      { term: "Rain day", detail: infoRainDayRule },
+      { term: "Thunder day", detail: infoThunderDayRule },
     ],
   },
   precip_split: {
     title: "Directional Precipitation Split",
-    bullets: [
-      "Polar chart showing precipitation intensity bucket contribution by wind-direction sector.",
-      "Precipitation is grouped into directional sectors and intensity buckets before normalization within filtered sectors.",
+    description: "Polar view of precipitation intensity contribution by wind-direction sector.",
+    classification: [
+      { term: "Grouping", detail: "Wind-direction sector × precipitation-intensity bucket" },
+      { term: "Display", detail: "Relative intensity mix per sector (normalized stack)" },
     ],
   },
   monthly_fog: {
     title: "Monthly Fog/Low Cloud Frequency",
-    bullets: [
-      "Monthly stacked frequencies for fog and cloud-base threshold categories.",
-      "Fog logic: explicit FG token OR inferred fog when (AIR_TEMP - DWPT) < 2 C, PRCP_10 < 0.2, and visibility < 1.0 km (VSBY or AWS_VSBY).",
-      "Cloud classification uses cloud-base bins: 2000-1500 ft, 1500-1000 ft, 1000-500 ft, and <500 ft; mode toggles alter denominator.",
+    description: "Monthly stacked frequencies for fog and cloud-base threshold categories.",
+    classification: [
+      { term: "Fog", detail: infoFogRule },
+      { term: "Low cloud", detail: infoLowCloudBins },
+      { term: "Denominator", detail: "All, rain, or non-rain days (filter)" },
     ],
   },
   fog_share: {
     title: "Hourly Fog/Low Cloud Share",
-    bullets: [
-      "Shows time-of-day distribution of fog/low cloud occurrences across selected months and years.",
-      "Fog logic: explicit FG token OR inferred fog when (AIR_TEMP - DWPT) < 2 C, PRCP_10 < 0.2, and visibility < 1.0 km (VSBY or AWS_VSBY).",
-      "Cloud classification uses cloud-base bins: 2000-1500 ft, 1500-1000 ft, 1000-500 ft, and <500 ft, then aggregates by hour.",
+    description: "Time-of-day distribution of fog and low-cloud occurrences.",
+    classification: [
+      { term: "Rules", detail: "Same fog and low-cloud logic as monthly chart" },
+      { term: "Aggregation", detail: "Matched observations by hour of day (UTC)" },
     ],
   },
   cloud_distribution: {
     title: "Cloud Distribution vs Wind",
-    bullets: [
-      "Shows low-cloud behavior relative to wind direction and speed classes.",
-      "Low-cloud membership is based on cloud amount coding (BKN/OVC) and cloud-base threshold bins (<2000/<1500/<1000/<500 ft).",
+    description: "Low-cloud frequency relative to wind direction and wind-speed class.",
+    classification: [
+      { term: "Low cloud", detail: "Broken/overcast below 2000 ft — bins at 2000, 1500, 1000, 500 ft" },
+      { term: "Fog", detail: "Standard fog rule (see monthly fog chart)" },
+      { term: "Grouping", detail: "Wind-direction sector × sustained wind-speed class" },
     ],
   },
   fog_cloud_joint: {
     title: "Fog/Cloud Joint Conditions",
-    bullets: [
-      "Relates fog/low-cloud occurrence to temperature-dewpoint spread groupings.",
-      "Fog classification uses explicit FG or inferred fog criteria: spread < 2 C, PRCP_10 < 0.2, visibility < 1.0 km (VSBY/AWS_VSBY).",
-      "Cloud classification uses cloud-base bins: 2000-1500 ft, 1500-1000 ft, 1000-500 ft, and <500 ft.",
+    description: "Fog and low-cloud occurrence related to temperature–dewpoint spread.",
+    classification: [
+      { term: "Fog", detail: infoFogRule },
+      { term: "Low cloud", detail: infoLowCloudBins },
+      { term: "X-axis", detail: "Temperature–dewpoint spread bands" },
     ],
   },
   monthly_smoke: {
     title: "Monthly Smoke/Dust Frequency",
-    bullets: [
-      "Monthly frequency of smoke/dust phenomena from configured code groups.",
-      "Classification tokens are FU, DU, SA, and VA from present weather fields; values are month-aggregated from filtered observations.",
+    description: "Monthly frequency of smoke, dust, sand, and volcanic-ash observations.",
+    classification: [
+      { term: "Events", detail: infoSmokeDustRule },
+      { term: "Aggregation", detail: "Monthly count from filtered observations" },
     ],
   },
   hourly_smoke: {
     title: "Hourly Smoke/Dust Frequency",
-    bullets: [
-      "Hour-of-day frequency profile for smoke/dust observations.",
-      "Uses the same FU/DU/SA/VA token classification, then aggregates by hour.",
+    description: "Hour-of-day frequency profile for smoke and dust phenomena.",
+    classification: [
+      { term: "Events", detail: infoSmokeDustRule },
+      { term: "Aggregation", detail: "By hour of day (UTC)" },
     ],
   },
   scatter_wind_dewpt: {
     title: "Wind Speed vs Dewpoint Spread",
-    bullets: [
-      "Scatter relationship between wind speed and dewpoint/temperature spread under smoke/dust conditions.",
-      "Points are filtered to observations containing FU/DU/SA/VA tokens before plotting wind/dewpoint-spread relationship.",
-      "Turn Error bars (SD) on to show ±1SD shaded bands around each phenomenon least-squares fit line.",
+    description: "Scatter of wind speed against dewpoint for smoke and dust events.",
+    classification: [
+      { term: "Filter", detail: infoSmokeDustRule },
+      { term: "Axes", detail: "Wind speed (kt) vs dewpoint (°C)" },
+      { term: "Error bars", detail: "±1 SD around least-squares fit per phenomenon" },
     ],
   },
   radial_scatter_dust: {
     title: "Directional Smoke/Dust Relative Frequency",
-    bullets: [
-      "Polar-frequency view of smoke/dust phenomenon occurrence by direction and speed.",
-      "Uses FU/DU/SA/VA classified observations grouped by direction and speed, normalized to relative frequency.",
+    description: "Polar-frequency view of smoke and dust by wind direction and speed.",
+    classification: [
+      { term: "Events", detail: infoSmokeDustRule },
+      { term: "Grouping", detail: "Wind-direction sector × wind-speed class" },
+      { term: "Display", detail: "Relative frequency (polar)" },
     ],
   },
 };
@@ -788,6 +805,93 @@ function appendInfoSubsection(host, title, bullets) {
   host.appendChild(section);
 }
 
+function appendInfoClassificationDetail(host, detail) {
+  const details = Array.isArray(detail) ? detail : [detail];
+  if (details.length === 1) {
+    host.textContent = details[0];
+    return;
+  }
+
+  const list = document.createElement("ul");
+  list.className = "info-class-sublist";
+  details.forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = item;
+    list.appendChild(li);
+  });
+  host.appendChild(list);
+}
+
+function renderInfoClassificationCell(classification) {
+  const cell = document.createElement("td");
+  cell.className = "info-class-cell";
+
+  if (typeof classification === "string") {
+    cell.textContent = classification;
+    return cell;
+  }
+
+  const list = document.createElement("div");
+  list.className = "info-class-list";
+  classification.forEach(({ term, detail }) => {
+    const item = document.createElement("div");
+    item.className = "info-class-item";
+
+    const termEl = document.createElement("span");
+    termEl.className = "info-class-term";
+    termEl.textContent = term;
+    item.appendChild(termEl);
+
+    const detailEl = document.createElement("div");
+    detailEl.className = "info-class-detail";
+    appendInfoClassificationDetail(detailEl, detail);
+    item.appendChild(detailEl);
+
+    list.appendChild(item);
+  });
+  cell.appendChild(list);
+  return cell;
+}
+
+function renderInfoGraphDetailsTable(figureIds) {
+  const table = document.createElement("table");
+  table.className = "info-graph-table";
+
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  ["Graph", "Description", "Classification method"].forEach((label) => {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = label;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  figureIds.forEach((figureId) => {
+    const detail = infoFigureDetails[figureId];
+    if (!detail) {
+      return;
+    }
+    const row = document.createElement("tr");
+
+    const titleCell = document.createElement("td");
+    titleCell.textContent = detail.title;
+    row.appendChild(titleCell);
+
+    const descCell = document.createElement("td");
+    descCell.textContent = detail.description;
+    row.appendChild(descCell);
+
+    row.appendChild(renderInfoClassificationCell(detail.classification));
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+
+  return table;
+}
+
 function activeInfoSectionKey() {
   return state.requestedSection || state.displayedSection || "overview";
 }
@@ -820,32 +924,18 @@ function renderInfoModalContent() {
   const dataPanel = document.createElement("section");
   dataPanel.className = "info-panel info-panel-data";
   appendInfoSection(dataPanel, infoDataSection.title, infoDataSection.bullets);
-  appendInfoSubsection(dataPanel, infoObservationsSection.title, infoObservationsSection.bullets);
-  if (state.liteMode) {
-    appendInfoSubsection(dataPanel, infoLiteFiltersSection.title, infoLiteFiltersSection.bullets);
-  } else {
+  if (!state.liteMode) {
     appendInfoSubsection(dataPanel, infoClimateDriverSection.title, infoClimateDriverSection.bullets);
   }
 
   const graphPanel = document.createElement("section");
   graphPanel.className = "info-panel info-panel-graphs";
-  const graphPanelHeader = document.createElement("section");
-  graphPanelHeader.className = "info-section";
-  const graphHeading = document.createElement("h3");
-  graphHeading.textContent = "Graph details";
-  graphPanelHeader.appendChild(graphHeading);
-  graphPanel.appendChild(graphPanelHeader);
 
   const sectionKey = activeInfoSectionKey();
-
   const figureIds = activeFigureIdsForInfo(sectionKey);
-  figureIds.forEach((figureId) => {
-    const detail = infoFigureDetails[figureId];
-    if (!detail) {
-      return;
-    }
-    appendInfoSubsection(graphPanel, detail.title, detail.bullets);
-  });
+  if (figureIds.length) {
+    graphPanel.appendChild(renderInfoGraphDetailsTable(figureIds));
+  }
 
   panels.appendChild(graphPanel);
   panels.appendChild(dataPanel);
