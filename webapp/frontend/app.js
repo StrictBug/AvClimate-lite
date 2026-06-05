@@ -685,6 +685,7 @@ const els = {
   wrHourScroller: null,
   wrHourScrollerContainer: null,
   wrHourValue: null,
+  wrHourPlayBtn: null,
   wrToolbarTemplate: document.getElementById("wr-toolbar-template"),
 };
 
@@ -1134,10 +1135,246 @@ function formatWindRoseHourLabel(hourValue) {
   return `${String(hourValue ?? "0").padStart(2, "0")}Z`;
 }
 
+const WIND_ROSE_PLAY_INTERVAL_MS = 300;
+
+const windRosePlayback = {
+  timer: null,
+  playing: false,
+  suppressSliderFetch: false,
+  renderInFlight: false,
+  liteHourlyMap: null,
+  apiCacheKey: null,
+  apiHourlyFigures: null,
+};
+
+function updateWindRosePlayButton() {
+  if (!els.wrHourPlayBtn) {
+    return;
+  }
+  els.wrHourPlayBtn.classList.toggle("is-playing", windRosePlayback.playing);
+  els.wrHourPlayBtn.setAttribute(
+    "aria-label",
+    windRosePlayback.playing ? "Pause hourly wind rose animation" : "Play hourly wind rose animation",
+  );
+  els.wrHourPlayBtn.title = windRosePlayback.playing ? "Pause hourly animation" : "Play hourly animation";
+}
+
+function stopWindRosePlayback() {
+  if (windRosePlayback.timer) {
+    clearInterval(windRosePlayback.timer);
+    windRosePlayback.timer = null;
+  }
+  windRosePlayback.playing = false;
+  windRosePlayback.renderInFlight = false;
+  updateWindRosePlayButton();
+}
+
+function setWindRoseHourDisplay(hourValue) {
+  const hour = String(hourValue ?? "0");
+  windRosePlayback.suppressSliderFetch = true;
+  if (els.wrHourScroller) {
+    els.wrHourScroller.value = hour;
+  }
+  if (els.wrHourValue) {
+    els.wrHourValue.textContent = formatWindRoseHourLabel(hour);
+  }
+  windRosePlayback.suppressSliderFetch = false;
+}
+
+function getWindRoseChartHost() {
+  const windRoseIndex = state.latestFigures.findIndex((item) => item.id === "wind_rose");
+  if (windRoseIndex < 0) {
+    return null;
+  }
+  return els.charts[windRoseIndex] || null;
+}
+
+function windRosePlaybackCacheKey() {
+  const params = getParams();
+  params.delete("hourStart");
+  params.delete("hourEnd");
+  return params.toString();
+}
+
+function liteWindRoseHourlyUrl(icao) {
+  return `data-lite/${icao}/wind_rose_hourly.json.gz`;
+}
+
+function liteWindRoseHourlyIsCached(icao) {
+  const url = liteWindRoseHourlyUrl(icao);
+  return liteCache.has(url) || liteCache.has(liteJsonGzUrl(url));
+}
+
+async function ensureWindRoseHourlyFramesLoaded() {
+  const section = state.displayedSection;
+  if (!shouldUseHourlyWindRose(section)) {
+    throw new Error("Hourly wind rose mode is not active");
+  }
+
+  if (state.liteMode) {
+    const icao = els.icao.value;
+    const url = liteWindRoseHourlyUrl(icao);
+    const needsFetch = !liteWindRoseHourlyIsCached(icao);
+    if (needsFetch) {
+      showLoading("Preparing animation...");
+    }
+    try {
+      windRosePlayback.liteHourlyMap = await fetchJsonCached(url);
+    } finally {
+      if (needsFetch) {
+        hideLoading();
+      }
+    }
+    return;
+  }
+
+  const cacheKey = windRosePlaybackCacheKey();
+  if (windRosePlayback.apiCacheKey === cacheKey && windRosePlayback.apiHourlyFigures?.size) {
+    return;
+  }
+
+  showLoading("Preparing animation...");
+  try {
+    const figures = new Map();
+    const requests = Array.from({ length: 24 }, async (_, hour) => {
+      const params = getParams();
+      params.set("figureIds", "wind_rose");
+      params.set("hourStart", String(hour));
+      params.set("hourEnd", String(hour));
+      params.set("invertHour", "false");
+      params.set("includeMetrics", "false");
+      const response = await fetch(apiUrl(`/api/charts?${params.toString()}`));
+      if (!response.ok) {
+        throw new Error(`Failed to load hour ${hour} wind rose`);
+      }
+      const data = await response.json();
+      const windRoseFigure = data?.figures?.find((item) => item.id === "wind_rose");
+      if (windRoseFigure) {
+        figures.set(hour, JSON.parse(JSON.stringify(windRoseFigure)));
+      }
+    });
+    await Promise.all(requests);
+    windRosePlayback.apiCacheKey = cacheKey;
+    windRosePlayback.apiHourlyFigures = figures;
+
+    if (!state.windRoseLayoutRef[section]) {
+      await fetchWindRoseDailySnapshot(section);
+    }
+  } finally {
+    hideLoading();
+  }
+}
+
+function resolveWindRoseHourFigure(hour, icao, season) {
+  if (state.liteMode) {
+    const hResult = lookupLiteWindRoseHourlyPayload(windRosePlayback.liteHourlyMap, season, hour);
+    return hResult?.figures?.find((figure) => figure.id === "wind_rose") || null;
+  }
+  return windRosePlayback.apiHourlyFigures?.get(Number(hour)) || null;
+}
+
+async function renderWindRoseHourFrame(hour, section = state.displayedSection) {
+  if (!shouldUseHourlyWindRose(section)) {
+    return;
+  }
+
+  const host = getWindRoseChartHost();
+  if (!host) {
+    return;
+  }
+
+  const icao = els.icao.value;
+  const season = els.season.value;
+  if (state.liteMode && !windRosePlayback.liteHourlyMap) {
+    windRosePlayback.liteHourlyMap = await fetchJsonCached(liteWindRoseHourlyUrl(icao));
+  }
+  const sourceFigure = resolveWindRoseHourFigure(hour, icao, season);
+  if (!sourceFigure?.figure) {
+    return;
+  }
+
+  const hourlyWrFig = JSON.parse(JSON.stringify(sourceFigure));
+  const chartHeight = Number.parseFloat(host.style.height) || getChartHeight(section);
+  const layoutSnapshot = state.windRoseLayoutRef[section]
+    ? { ...state.windRoseLayoutRef[section], height: chartHeight }
+    : null;
+
+  applyWindRoseLayout(hourlyWrFig.figure, section, layoutSnapshot);
+  hourlyWrFig.figure.layout = hourlyWrFig.figure.layout || {};
+  hourlyWrFig.figure.layout.height = chartHeight;
+  delete hourlyWrFig.figure.layout.width;
+  hourlyWrFig.figure.layout.showlegend = false;
+
+  await preparePolarTerrainBackground(hourlyWrFig.figure, icao);
+  applyStrictValueHoverTemplatesToFigure(hourlyWrFig.figure, "wind_rose");
+
+  await Plotly.react(host, hourlyWrFig.figure.data || [], hourlyWrFig.figure.layout || {}, {
+    displayModeBar: false,
+    responsive: true,
+  });
+
+  const windRoseIndex = state.latestFigures.findIndex((item) => item.id === "wind_rose");
+  if (windRoseIndex >= 0) {
+    state.latestFigures[windRoseIndex] = hourlyWrFig;
+    const { legend } = chartUi[windRoseIndex];
+    renderExternalLegend(host, legend, hourlyWrFig.figure, section, "wind_rose");
+  }
+
+  await scheduleWindRoseResize(host);
+}
+
+async function advanceWindRosePlaybackFrame() {
+  if (!windRosePlayback.playing || windRosePlayback.renderInFlight) {
+    return;
+  }
+
+  const currentHour = Number(els.wrHourScroller?.value ?? 0);
+  const nextHour = (currentHour + 1) % 24;
+  setWindRoseHourDisplay(nextHour);
+
+  windRosePlayback.renderInFlight = true;
+  try {
+    await renderWindRoseHourFrame(nextHour);
+  } catch (error) {
+    console.warn("Failed to advance wind rose playback:", error);
+    stopWindRosePlayback();
+  } finally {
+    windRosePlayback.renderInFlight = false;
+  }
+}
+
+async function startWindRosePlayback() {
+  if (!shouldUseHourlyWindRose()) {
+    return;
+  }
+
+  try {
+    await ensureWindRoseHourlyFramesLoaded();
+  } catch (error) {
+    console.warn("Failed to prepare wind rose playback:", error);
+    return;
+  }
+
+  windRosePlayback.playing = true;
+  updateWindRosePlayButton();
+  windRosePlayback.timer = setInterval(() => {
+    advanceWindRosePlaybackFrame();
+  }, WIND_ROSE_PLAY_INTERVAL_MS);
+}
+
+async function toggleWindRosePlayback() {
+  if (windRosePlayback.playing) {
+    stopWindRosePlayback();
+    return;
+  }
+  await startWindRosePlayback();
+}
+
 function resetWindRoseModeOnSectionChange(nextSection) {
   if (state.displayedSection === nextSection) {
     return;
   }
+  stopWindRosePlayback();
   state.wrMode = "summary";
 }
 
@@ -1165,6 +1402,7 @@ function renderWindRoseToolbar(section = state.displayedSection) {
     els.wrHourScroller = els.wrToolbarContainer.querySelector("#wr-hour-scroller");
     els.wrHourScrollerContainer = els.wrToolbarContainer.querySelector("#wr-hour-scroller-container");
     els.wrHourValue = els.wrToolbarContainer.querySelector("#wr-hour-value");
+    els.wrHourPlayBtn = els.wrToolbarContainer.querySelector("#wr-hour-play");
 
     attachWindRoseListeners();
   }
@@ -1197,12 +1435,17 @@ function renderWindRoseToolbar(section = state.displayedSection) {
     if (isHourly && els.wrHourScroller && els.wrHourValue) {
       els.wrHourValue.textContent = formatWindRoseHourLabel(els.wrHourScroller.value);
     }
+    if (!isHourly) {
+      stopWindRosePlayback();
+    }
+    updateWindRosePlayButton();
   }
 }
 
 function attachWindRoseListeners() {
   if (els.wrModeSummary) {
     els.wrModeSummary.addEventListener("click", () => {
+      stopWindRosePlayback();
       state.wrMode = "summary";
       els.wrModeSummary.classList.add("active");
       els.wrModeHourly.classList.remove("active");
@@ -1213,6 +1456,7 @@ function attachWindRoseListeners() {
 
   if (els.wrModeHourly) {
     els.wrModeHourly.addEventListener("click", () => {
+      stopWindRosePlayback();
       state.wrMode = "hourly";
       els.wrModeHourly.classList.add("active");
       els.wrModeSummary.classList.remove("active");
@@ -1221,17 +1465,46 @@ function attachWindRoseListeners() {
     });
   }
 
+  if (els.wrHourPlayBtn) {
+    els.wrHourPlayBtn.addEventListener("click", () => {
+      toggleWindRosePlayback();
+    });
+  }
+
   if (els.wrHourScroller) {
+    els.wrHourScroller.addEventListener("pointerdown", () => {
+      if (windRosePlayback.playing) {
+        stopWindRosePlayback();
+      }
+    });
     els.wrHourScroller.addEventListener("input", () => {
+      if (windRosePlayback.playing) {
+        stopWindRosePlayback();
+      }
       els.wrHourValue.textContent = formatWindRoseHourLabel(els.wrHourScroller.value);
+      if (windRosePlayback.suppressSliderFetch) {
+        return;
+      }
       if (windRoseToolbarSections().has(state.displayedSection)) {
+        if (state.liteMode && shouldUseHourlyWindRose()) {
+          renderWindRoseHourFrame(els.wrHourScroller.value);
+          return;
+        }
         scheduleFetchCharts(DRIVER_FETCH_DEBOUNCE_MS);
       }
     });
     els.wrHourScroller.addEventListener("change", () => {
-      if (windRoseToolbarSections().has(state.displayedSection)) {
-        fetchCharts();
+      if (windRosePlayback.suppressSliderFetch || windRosePlayback.playing) {
+        return;
       }
+      if (!windRoseToolbarSections().has(state.displayedSection)) {
+        return;
+      }
+      if (state.liteMode && shouldUseHourlyWindRose()) {
+        renderWindRoseHourFrame(els.wrHourScroller.value);
+        return;
+      }
+      fetchCharts();
     });
   }
 }
@@ -1285,6 +1558,9 @@ function applySeasonMonthRange() {
 }
 
 function refreshSeasonSelection() {
+  stopWindRosePlayback();
+  windRosePlayback.apiHourlyFigures = null;
+  windRosePlayback.apiCacheKey = null;
   applySeasonMonthRange();
   clearChartAxisLocks();
   fetchCharts();
@@ -3470,8 +3746,142 @@ const MONTH_AXIS_LABELS = new Set([
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ]);
 
+const FOG_MONTHLY_FIGURE_IDS = new Set(["fog_low_cloud", "monthly_fog"]);
+
+const DEFAULT_MONTH_LABELS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
 function isMonthAxisLabel(label) {
   return MONTH_AXIS_LABELS.has(String(label));
+}
+
+function selectedMonthNumbersFromControls() {
+  const config = seasonMonthConfig(els.season?.value || "all");
+  return selectedMonthNumbers(config.monthStart, config.monthEnd, config.invertMonth);
+}
+
+function selectedMonthNumbers(monthStart, monthEnd, invertMonth) {
+  const start = Number(monthStart);
+  const end = Number(monthEnd);
+  const invert = Boolean(invertMonth);
+  const selected = new Set();
+
+  for (let month = 1; month <= 12; month += 1) {
+    let keep;
+    if (invert) {
+      keep = month <= start || month >= end;
+    } else if (start <= end) {
+      keep = month >= start && month <= end;
+    } else {
+      keep = month >= start || month <= end;
+    }
+    if (keep) {
+      selected.add(month);
+    }
+  }
+
+  if (!selected.size) {
+    return [];
+  }
+
+  const anchor = invert ? end : start;
+  const ordered = [];
+  for (let offset = 0; offset < 12; offset += 1) {
+    const month = ((anchor - 1 + offset) % 12) + 1;
+    if (selected.has(month)) {
+      ordered.push(month);
+    }
+  }
+  return ordered;
+}
+
+function monthLabelsFromNumbers(monthNumbers) {
+  const monthNames = state.options?.months || DEFAULT_MONTH_LABELS;
+  return monthNumbers
+    .map((month) => monthNames[month - 1])
+    .filter((label) => Boolean(label));
+}
+
+function selectedMonthLabelsFromControls() {
+  return monthLabelsFromNumbers(selectedMonthNumbersFromControls());
+}
+
+function remapFogFigureToSeasonMonths(figure, targetMonthLabels) {
+  const targetSet = new Set(targetMonthLabels);
+  const sourceTicktext = Array.isArray(figure?.layout?.xaxis?.ticktext) && figure.layout.xaxis.ticktext.length
+    ? figure.layout.xaxis.ticktext.map(String)
+    : DEFAULT_MONTH_LABELS.slice();
+
+  figure.data = (figure.data || []).map((trace) => {
+    const xValues = Array.isArray(trace?.x) ? trace.x : [];
+    if (!xValues.length) {
+      return trace;
+    }
+
+    const yValues = Array.isArray(trace?.y) ? trace.y : [];
+    const customdata = Array.isArray(trace?.customdata) ? trace.customdata : null;
+    const xOffset = Number(xValues[0]) - Math.round(Number(xValues[0]));
+    const newX = [];
+    const newY = [];
+    const newCustom = [];
+
+    for (let i = 0; i < xValues.length; i += 1) {
+      const monthLabel = customdata
+        ? String(customdata[i])
+        : String(sourceTicktext[i] || "");
+      if (!targetSet.has(monthLabel)) {
+        continue;
+      }
+      const position = newX.length + 1;
+      newX.push(position + xOffset);
+      newY.push(yValues[i]);
+      if (customdata) {
+        newCustom.push(monthLabel);
+      }
+    }
+
+    const next = { ...trace, x: newX, y: newY };
+    if (customdata) {
+      next.customdata = newCustom;
+    }
+    return next;
+  });
+}
+
+function filterCategoryTracesToSeasonMonths(figure, targetMonthLabels) {
+  const targetSet = new Set(targetMonthLabels);
+  figure.data = (figure.data || []).map((trace) => {
+    const xValues = Array.isArray(trace?.x) ? trace.x : [];
+    if (!xValues.length || xValues.some((value) => typeof value === "number")) {
+      return trace;
+    }
+
+    const yValues = Array.isArray(trace?.y) ? trace.y : [];
+    const customdata = Array.isArray(trace?.customdata) ? trace.customdata : null;
+    const newX = [];
+    const newY = [];
+    const newCustom = [];
+
+    for (let i = 0; i < xValues.length; i += 1) {
+      const monthLabel = String(xValues[i]);
+      if (!targetSet.has(monthLabel)) {
+        continue;
+      }
+      newX.push(monthLabel);
+      newY.push(yValues[i]);
+      if (customdata) {
+        newCustom.push(customdata[i]);
+      }
+    }
+
+    const next = { ...trace, x: newX, y: newY };
+    if (customdata) {
+      next.customdata = newCustom;
+    }
+    return next;
+  });
 }
 
 function monthCategoriesFromFigure(figure) {
@@ -3516,7 +3926,23 @@ function enforceFrequencyMonthAxis(figure, figureId) {
     return;
   }
 
-  const months = monthCategoriesFromFigure(figure);
+  const seasonMonths = selectedMonthLabelsFromControls();
+  let months = monthCategoriesFromFigure(figure);
+
+  if (FOG_MONTHLY_FIGURE_IDS.has(figureId) && usesNumericMonthPositions(figure) && seasonMonths.length) {
+    remapFogFigureToSeasonMonths(figure, seasonMonths);
+    months = seasonMonths;
+  } else if (!months.length && seasonMonths.length) {
+    months = seasonMonths;
+  } else if (
+    seasonMonths.length
+    && months.length > seasonMonths.length
+    && months.every(isMonthAxisLabel)
+  ) {
+    months = seasonMonths;
+    filterCategoryTracesToSeasonMonths(figure, seasonMonths);
+  }
+
   if (!months.length) {
     return;
   }
@@ -4234,7 +4660,8 @@ async function applyHourlyWindRoseOverride(data, icao, season, section = state.r
 
   const hour = els.wrHourScroller?.value ?? "0";
   try {
-    const hDataMap = await fetchJsonCached(`data-lite/${icao}/wind_rose_hourly.json.gz`);
+    const hDataMap = await fetchJsonCached(liteWindRoseHourlyUrl(icao));
+    windRosePlayback.liteHourlyMap = hDataMap;
     const hResult = lookupLiteWindRoseHourlyPayload(hDataMap, season, hour);
     if (!hResult?.figures?.length) {
       return data;
@@ -4356,6 +4783,7 @@ function scheduleFetchCharts(delayMs = 0) {
 }
 
 async function fetchChartsLite() {
+  stopWindRosePlayback();
   clearChartAxisLocks();
   const icao = els.icao.value;
   const section = state.requestedSection;
@@ -4402,6 +4830,7 @@ async function fetchCharts() {
   if (state.liteMode) {
     return fetchChartsLite();
   }
+  stopWindRosePlayback();
   clearChartAxisLocks();
   if (!validateRanges()) {
     return;
@@ -4590,6 +5019,10 @@ function wireControls() {
   }
 
   els.icao.addEventListener("change", () => {
+    stopWindRosePlayback();
+    windRosePlayback.liteHourlyMap = null;
+    windRosePlayback.apiHourlyFigures = null;
+    windRosePlayback.apiCacheKey = null;
     clearChartAxisLocks();
     fetchCharts();
   });

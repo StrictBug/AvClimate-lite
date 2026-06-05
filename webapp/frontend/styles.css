@@ -146,6 +146,43 @@ body.lite-mode .lite-only {
   gap: 12px;
 }
 
+.wr-hour-play-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--av-border);
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--av-blue);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.wr-hour-play-btn:hover {
+  background: #f0f5ff;
+}
+
+.wr-hour-play-btn.is-playing {
+  background: linear-gradient(180deg, #3b6ed8 0%, #2159d1 100%);
+  color: #ffffff;
+  border-color: #2159d1;
+}
+
+.wr-hour-play-icon-pause {
+  display: none;
+}
+
+.wr-hour-play-btn.is-playing .wr-hour-play-icon-play {
+  display: none;
+}
+
+.wr-hour-play-btn.is-playing .wr-hour-play-icon-pause {
+  display: block;
+}
+
 #wr-hour-scroller {
   width: 100%;
   cursor: pointer;
