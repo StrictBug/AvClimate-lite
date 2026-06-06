@@ -721,6 +721,13 @@ body.lite-mode .lite-only {
   margin-inline: auto;
 }
 
+.chart-shell.is-temp-dewpoint-shell {
+  align-items: center;
+  width: 96%;
+  max-width: 96%;
+  margin-inline: auto;
+}
+
 .chart-card-toolbar {
   display: flex;
   flex-direction: column;

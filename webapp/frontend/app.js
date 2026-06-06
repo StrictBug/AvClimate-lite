@@ -4559,6 +4559,11 @@ const SCATTER_WIND_DEWPT_PANEL = {
   margin: { l: 40, r: 40, t: 54, b: 36 },
 };
 
+const TEMP_DEWPOINT_PANEL = {
+  margin: { l: 58, r: 44, t: 36, b: 36 },
+  xDomain: [0.03, 0.97],
+};
+
 const SCATTER_WIND_DEWPT_CI_FILL = {
   FU: "rgba(122,122,122,0.35)",
   DU: "rgba(239,85,59,0.35)",
@@ -4644,6 +4649,54 @@ function enforceScatterWindDewptLayout(figure, chartHeight = null) {
     };
   }
   enforceScatterWindDewptAxisRanges(figure);
+}
+
+function enforceTempDewpointLayout(figure, chartHeight = null) {
+  figure.layout = figure.layout || {};
+  if (chartHeight != null) {
+    figure.layout.height = chartHeight;
+  }
+  figure.layout.margin = {
+    ...(figure.layout.margin || {}),
+    ...TEMP_DEWPOINT_PANEL.margin,
+  };
+  figure.layout.xaxis = {
+    ...(figure.layout.xaxis || {}),
+    domain: TEMP_DEWPOINT_PANEL.xDomain.slice(),
+    automargin: false,
+  };
+
+  const yTitle = figure.layout.yaxis?.title;
+  const yTitleObj = typeof yTitle === "object" && yTitle !== null
+    ? yTitle
+    : { text: yTitle || "" };
+  figure.layout.yaxis = {
+    ...(figure.layout.yaxis || {}),
+    automargin: false,
+    ticklabelstandoff: 4,
+    title: {
+      ...yTitleObj,
+      standoff: 8,
+    },
+  };
+  if (figure.layout.yaxis2) {
+    figure.layout.yaxis2 = {
+      ...figure.layout.yaxis2,
+      automargin: false,
+    };
+  }
+  if (figure.layout.title) {
+    const title = typeof figure.layout.title === "object"
+      ? figure.layout.title
+      : { text: figure.layout.title };
+    figure.layout.title = {
+      ...title,
+      x: 0.01,
+      xanchor: "left",
+      y: 0.98,
+      yanchor: "top",
+    };
+  }
 }
 
 function relayoutScatterWindDewptAxes(host, chartHeight = null) {
@@ -5319,6 +5372,7 @@ async function drawCharts(figures, section = state.displayedSection) {
     const isWindRoseFigure = item.id === "wind_rose";
     shell.classList.toggle("is-wind-rose-shell", isWindRoseFigure);
     shell.classList.toggle("is-scatter-wind-dewpt-shell", item.id === "scatter_wind_dewpt");
+    shell.classList.toggle("is-temp-dewpoint-shell", item.id === "temp_dewpoint");
     if (isWindRoseFigure) {
       const layoutSnapshot = state.wrMode === "hourly" && state.windRoseLayoutRef[section]
         ? { ...state.windRoseLayoutRef[section], height: targetChartHeight }
@@ -5343,6 +5397,9 @@ async function drawCharts(figures, section = state.displayedSection) {
     applyStrictValueHoverTemplatesToFigure(figure, item.id || "");
     enforceFrequencyMonthAxis(figure, item.id || "");
     enforceHourlyFrequencyAxis(figure, item.id || "");
+    if (item.id === "temp_dewpoint") {
+      enforceTempDewpointLayout(figure, targetChartHeight);
+    }
     prepareFrequencyFigureGeometry(figure, item.id || "");
     if (isFrequencyFigure || item.id === "fog_cloud_joint") {
       figure.layout.uirevision = stackedUirevisionToken(item.id || "");
