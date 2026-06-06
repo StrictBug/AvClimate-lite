@@ -622,7 +622,11 @@ function syncBackgroundBarTraceStacking(host) {
 }
 
 function finishStrictValueErrorBarOverlays(host) {
-  return syncErrorBarOverlayVisibility(host).then(() => syncBackgroundBarTraceStacking(host));
+  const figureId = host?.dataset?.figureId || "";
+  const syncVisibility = strictGroupedBarOverlayFigureIds.has(figureId)
+    ? syncGroupedBarOverlayState(host)
+    : syncErrorBarOverlayVisibility(host);
+  return syncVisibility.then(() => syncBackgroundBarTraceStacking(host));
 }
 
 const overviewFogToolbarId = "chart-toolbar-4";
@@ -717,6 +721,7 @@ function ensureChartShell(host) {
       const chartIndex = Number(maximizeButton.dataset.chartIndex);
       state.maximizedChartIndex = state.maximizedChartIndex === chartIndex ? null : chartIndex;
       applyMaximizedChartState();
+      invalidateCanonicalGeometryForVisibleCharts();
       if (state.latestFigures.length) {
         drawCharts(state.latestFigures, state.displayedSection);
       } else {
@@ -1899,6 +1904,13 @@ function isTraceVisible(trace) {
   return trace?.visible !== false && trace?.visible !== "legendonly";
 }
 
+function projectedTraceVisible(trace, traceIndex, affectedIndices, nextVisibility) {
+  if (!affectedIndices.includes(traceIndex)) {
+    return isTraceVisible(trace);
+  }
+  return nextVisibility !== "legendonly" && nextVisibility !== false;
+}
+
 function getLegendItems(figure, section = state.displayedSection, figureId = "") {
   const data = figure?.data || [];
   const legend = figure?.layout?.legend || {};
@@ -2183,18 +2195,83 @@ function paddedAxisCeiling(axisMin, axisMax) {
   return max + padding;
 }
 
-function traceBoundsWithError(trace) {
+function finalizeAxisBounds(minValue, maxValue) {
+  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+    return null;
+  }
+
+  let min = minValue;
+  let max = maxValue;
+  if (min >= 0) {
+    min = 0;
+  }
+  if (max <= min) {
+    max = min + 1;
+  }
+
+  const span = max - min;
+  const upperPad = Math.max(span * 0.12, 0.5);
+  const lowerPad = min < 0 ? Math.max(span * 0.04, 0.25) : 0;
+  return {
+    min: min - lowerPad,
+    max: max + upperPad,
+  };
+}
+
+function latentErrorArrays(trace) {
+  const yValues = numericArray(trace?.y);
+  const count = yValues.length;
+  if (count <= 1) {
+    return { plus: [], minus: [] };
+  }
+
+  const yStdArray = pointwiseStdArray(yValues).slice(0, count);
+  const yStd = representativeStd(yStdArray);
+  const plus = yStdArray.map((sd) => {
+    const sdNum = Number(sd);
+    return Math.max(0, Number.isFinite(sdNum) ? sdNum : yStd);
+  });
+  const minus = yValues.map((value, i) => {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+      return 0;
+    }
+    const sd = Number(plus[i]);
+    const eff = Number.isFinite(sd) ? sd : yStd;
+    return Math.min(eff, Math.max(0, numericValue));
+  });
+  return { plus, minus };
+}
+
+function traceBoundsWithError(trace, options = {}) {
+  const includeLatentError = Boolean(options.includeLatentError);
+  const includeOverlayError = Boolean(options.includeOverlayError);
   const yVals = valueArray(trace?.y);
   const baseVals = valueArray(trace?.base);
   const errorY = trace?.error_y;
-  const hasVisibleError = Boolean(errorY?.visible);
-  const errVals = hasVisibleError ? valueArray(errorY?.array) : [];
-  const errMinusVals = hasVisibleError ? valueArray(errorY?.arrayminus) : [];
+  const hasVisibleError = Boolean(errorY?.visible)
+    || (includeOverlayError && isStrictValueErrorOverlayTrace(trace) && errorY);
+  let errVals = hasVisibleError ? valueArray(errorY?.array) : [];
+  let errMinusVals = hasVisibleError ? valueArray(errorY?.arrayminus) : [];
   const fallbackPlus = hasVisibleError ? Number(errorY?.value) : 0;
   const symmetric = errorY?.symmetric !== false;
   const fallbackMinus = hasVisibleError
     ? (Number.isFinite(Number(errorY?.valueminus)) ? Number(errorY?.valueminus) : fallbackPlus)
     : 0;
+
+  if (
+    !hasVisibleError
+    && includeLatentError
+    && supportsErrorBars(trace)
+    && !isErrorBarOverlayTrace(trace)
+    && !isStrictValueErrorOverlayTrace(trace)
+  ) {
+    const latent = latentErrorArrays(trace);
+    if (latent.plus.length) {
+      errVals = latent.plus;
+      errMinusVals = latent.minus;
+    }
+  }
 
   const count = Math.max(yVals.length, baseVals.length, errVals.length, errMinusVals.length);
   if (!count) {
@@ -2234,6 +2311,883 @@ function traceBoundsWithError(trace) {
   return { min: minVal, max: maxVal };
 }
 
+function usesResponsiveYAxis(figureId = "") {
+  if (!figureId || figureId === "wind_rose") {
+    return false;
+  }
+  return frequencyFigureIds.has(figureId) || figureId === "scatter_wind_dewpt";
+}
+
+const FREQUENCY_CHART_MIN_MARGIN_B = 36;
+const FREQUENCY_CHART_MIN_MARGIN_L = 52;
+const CANONICAL_GEOMETRY_VERSION = 6;
+
+function figureUsesFrequencyAxisLabelLock(figureId = "", layout = {}) {
+  if (!figureId || layout?.polar) {
+    return false;
+  }
+  return usesResponsiveYAxis(figureId) && figureId !== "scatter_wind_dewpt";
+}
+
+function hostUsesFrequencyAxisLabelLock(host) {
+  if (!host) {
+    return false;
+  }
+  return figureUsesFrequencyAxisLabelLock(host.dataset?.figureId || "", host.layout);
+}
+
+function effectiveFrequencyMarginBottom(host, candidate = null) {
+  const baked = Number(candidate ?? host?.layout?.margin?.b);
+  const base = Number.isFinite(baked) ? baked : FREQUENCY_CHART_MIN_MARGIN_B;
+  return Math.max(base, FREQUENCY_CHART_MIN_MARGIN_B);
+}
+
+function copyMarginBox(margin = {}) {
+  const next = {};
+  ["l", "r", "t", "b"].forEach((key) => {
+    const value = Number(margin[key]);
+    if (Number.isFinite(value)) {
+      next[key] = value;
+    }
+  });
+  return next;
+}
+
+function copyAxisDomain(axis = {}) {
+  if (!Array.isArray(axis.domain) || axis.domain.length !== 2) {
+    return null;
+  }
+  return [axis.domain[0], axis.domain[1]];
+}
+
+function collectXaxisLabelLockProps(xaxis = {}) {
+  const lock = {
+    ticklabelposition: xaxis.ticklabelposition || "outside",
+  };
+
+  ["tickmode", "tickangle", "ticklabelstandoff", "ticklabeloverflow", "automargin", "type", "side"].forEach((key) => {
+    if (xaxis[key] !== undefined) {
+      lock[key] = xaxis[key];
+    }
+  });
+
+  if (Array.isArray(xaxis.range) && xaxis.range.length === 2) {
+    lock.range = [xaxis.range[0], xaxis.range[1]];
+  }
+  if (Array.isArray(xaxis.tickvals) && xaxis.tickvals.length) {
+    lock.tickvals = xaxis.tickvals.slice();
+  }
+  if (Array.isArray(xaxis.ticktext) && xaxis.ticktext.length) {
+    lock.ticktext = xaxis.ticktext.slice();
+  }
+  if (Array.isArray(xaxis.categoryarray) && xaxis.categoryarray.length) {
+    lock.categoryarray = xaxis.categoryarray.slice();
+  }
+  if (typeof xaxis.categoryorder === "string" && xaxis.categoryorder.length) {
+    lock.categoryorder = xaxis.categoryorder;
+  }
+
+  return lock;
+}
+
+function collectFrequencyPlotGeometryLock(layout = {}) {
+  const margin = copyMarginBox(layout.margin);
+  margin.b = effectiveFrequencyMarginBottom({ layout }, margin.b);
+
+  const domains = {
+    x: copyAxisDomain(layout.xaxis) || [0, 1],
+    y: copyAxisDomain(layout.yaxis) || [0, 1],
+  };
+  if (layout.yaxis2) {
+    domains.y2 = copyAxisDomain(layout.yaxis2) || [0, 1];
+  }
+
+  const anchors = {};
+  if (typeof layout.xaxis?.anchor === "string") {
+    anchors.x = layout.xaxis.anchor;
+  }
+  if (typeof layout.yaxis?.anchor === "string") {
+    anchors.y = layout.yaxis.anchor;
+  }
+  if (typeof layout.yaxis2?.anchor === "string") {
+    anchors.y2 = layout.yaxis2.anchor;
+  }
+
+  return {
+    margin,
+    domains,
+    anchors,
+    yAutomargin: false,
+    y2Automargin: false,
+  };
+}
+
+function seedFrequencyPlotGeometryLock(figure, figureId = "") {
+  if (!figureUsesFrequencyAxisLabelLock(figureId, figure?.layout)) {
+    return;
+  }
+
+  const layout = figure.layout || {};
+  const lock = {
+    ...collectXaxisLabelLockProps(layout.xaxis),
+    ...collectFrequencyPlotGeometryLock(layout),
+  };
+
+  state.stackedAxisLabelLocks[frequencyAxisLockKey(figureId)] = lock;
+}
+
+function seedGroupedBarXAxisLockOnly(figure, figureId = "") {
+  if (!strictGroupedBarOverlayFigureIds.has(figureId)) {
+    return;
+  }
+
+  const layout = figure.layout || {};
+  state.stackedAxisLabelLocks[frequencyAxisLockKey(figureId)] = {
+    ...collectXaxisLabelLockProps(layout.xaxis),
+  };
+}
+
+function seedGroupedBarInitialYRange(figure) {
+  const traces = figure?.data || [];
+  let minValue = Number.POSITIVE_INFINITY;
+  let maxValue = Number.NEGATIVE_INFINITY;
+
+  traces.forEach((trace) => {
+    if (!trace || trace.type !== "bar" || isErrorBarOverlayTrace(trace) || isStrictValueErrorOverlayTrace(trace)) {
+      return;
+    }
+    const bounds = traceBoundsWithError(trace, { includeLatentError: true });
+    if (!bounds) {
+      return;
+    }
+    minValue = Math.min(minValue, bounds.min);
+    maxValue = Math.max(maxValue, bounds.max);
+  });
+
+  const finalized = finalizeAxisBounds(minValue, maxValue);
+  if (!finalized) {
+    return;
+  }
+
+  figure.layout = figure.layout || {};
+  figure.layout.yaxis = {
+    ...(figure.layout.yaxis || {}),
+    range: [finalized.min, finalized.max],
+    autorange: false,
+  };
+}
+
+function invalidateCanonicalGeometry(host) {
+  if (!hostUsesCanonicalGroupedBarGeometry(host)) {
+    return;
+  }
+
+  const key = stackedAxisLockKey(host);
+  const lock = state.stackedAxisLabelLocks[key];
+  if (!lock) {
+    return;
+  }
+
+  delete lock.canonicalGeometry;
+  delete lock.geometryVersion;
+  delete lock.margin;
+  delete lock.domains;
+  delete lock.anchors;
+  delete lock.yaxisTick;
+}
+
+function invalidateCanonicalGeometryForVisibleCharts() {
+  const visibleCount = state.latestFigures.length
+    ? Math.min(state.latestFigures.length, els.charts.length)
+    : 0;
+
+  for (let i = 0; i < visibleCount; i += 1) {
+    invalidateCanonicalGeometry(els.charts[i]);
+  }
+}
+
+function prepareFrequencyFigureGeometry(figure, figureId = "") {
+  if (!figureUsesFrequencyAxisLabelLock(figureId, figure?.layout)) {
+    return;
+  }
+
+  const layout = figure.layout || (figure.layout = {});
+  layout.margin = {
+    ...(layout.margin || {}),
+    ...copyMarginBox(layout.margin),
+    b: effectiveFrequencyMarginBottom({ layout }, layout.margin?.b),
+  };
+  layout.yaxis = {
+    ...(layout.yaxis || {}),
+    automargin: false,
+  };
+  if (layout.yaxis2) {
+    layout.yaxis2 = {
+      ...layout.yaxis2,
+      automargin: false,
+    };
+  }
+
+  if (strictGroupedBarOverlayFigureIds.has(figureId)) {
+    layout.xaxis = {
+      ...(layout.xaxis || {}),
+      domain: [0, 1],
+      anchor: "y",
+      automargin: false,
+    };
+    layout.yaxis = {
+      ...(layout.yaxis || {}),
+      domain: [0, 1],
+      anchor: "x",
+      automargin: false,
+    };
+    if (layout.yaxis2) {
+      layout.yaxis2 = {
+        ...layout.yaxis2,
+        automargin: false,
+      };
+    }
+    layout.margin = {
+      ...(layout.margin || {}),
+      l: Math.max(layout.margin?.l || 0, FREQUENCY_CHART_MIN_MARGIN_L),
+      b: effectiveFrequencyMarginBottom({ layout }, layout.margin?.b),
+    };
+    seedGroupedBarInitialYRange(figure);
+    seedGroupedBarXAxisLockOnly(figure, figureId);
+    return;
+  }
+
+  seedFrequencyPlotGeometryLock(figure, figureId);
+}
+
+function hostUsesCanonicalGroupedBarGeometry(host) {
+  const figureId = host?.dataset?.figureId || "";
+  return strictGroupedBarOverlayFigureIds.has(figureId);
+}
+
+function hasCanonicalPlotGeometry(host) {
+  const lock = state.stackedAxisLabelLocks[stackedAxisLockKey(host)];
+  return Boolean(
+    lock?.canonicalGeometry
+    && lock?.geometryVersion === CANONICAL_GEOMETRY_VERSION
+    && lock?.margin
+    && lock?.domains,
+  );
+}
+
+function awaitLayoutSettle() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+function collectYaxisTickLockProps(yaxis = {}) {
+  const lock = {};
+  ["tickmode", "dtick", "tick0", "nticks", "tickformat", "side", "position"].forEach((key) => {
+    if (yaxis[key] !== undefined) {
+      lock[key] = yaxis[key];
+    }
+  });
+  if (Array.isArray(yaxis.tickvals) && yaxis.tickvals.length) {
+    lock.tickvals = yaxis.tickvals.slice();
+  }
+  return lock;
+}
+
+function readPlotGeometryFromHost(host) {
+  const layout = host?._fullLayout || host?.layout || {};
+  const margin = copyMarginBox(layout.margin);
+  margin.b = effectiveFrequencyMarginBottom({ layout }, margin.b);
+  margin.l = Math.max(margin.l || 0, FREQUENCY_CHART_MIN_MARGIN_L);
+
+  const domains = {
+    x: [0, 1],
+    y: [0, 1],
+  };
+  if (layout.yaxis2) {
+    domains.y2 = copyAxisDomain(layout.yaxis2) || [0, 1];
+  }
+
+  const anchors = {
+    x: typeof layout.xaxis?.anchor === "string" ? layout.xaxis.anchor : "y",
+    y: typeof layout.yaxis?.anchor === "string" ? layout.yaxis.anchor : "x",
+  };
+  if (layout.yaxis2 && typeof layout.yaxis2.anchor === "string") {
+    anchors.y2 = layout.yaxis2.anchor;
+  }
+
+  return {
+    margin,
+    domains,
+    anchors,
+    yaxisTick: collectYaxisTickLockProps(layout.yaxis),
+    canonicalGeometry: true,
+    geometryVersion: CANONICAL_GEOMETRY_VERSION,
+    yAutomargin: false,
+    y2Automargin: false,
+  };
+}
+
+function buildPreCanonicalGeometryRelayout(host) {
+  const lock = state.stackedAxisLabelLocks[stackedAxisLockKey(host)] || {};
+  const relayout = {
+    "xaxis.ticklabelposition": lock.ticklabelposition || "outside",
+    "margin.b": effectiveFrequencyMarginBottom(host, lock?.margin?.b),
+    "yaxis.automargin": false,
+  };
+
+  ["tickmode", "tickangle", "ticklabelstandoff", "ticklabeloverflow", "automargin", "type", "side"].forEach((key) => {
+    if (lock[key] !== undefined) {
+      relayout[`xaxis.${key}`] = lock[key];
+    }
+  });
+
+  if (Array.isArray(lock.range) && lock.range.length === 2) {
+    relayout["xaxis.range"] = [lock.range[0], lock.range[1]];
+    relayout["xaxis.autorange"] = false;
+  }
+  if (Array.isArray(lock.tickvals) && lock.tickvals.length) {
+    relayout["xaxis.tickvals"] = lock.tickvals.slice();
+  }
+  if (Array.isArray(lock.ticktext) && lock.ticktext.length) {
+    relayout["xaxis.ticktext"] = lock.ticktext.slice();
+  }
+  if (typeof lock.categoryorder === "string" && lock.categoryorder.length) {
+    relayout["xaxis.categoryorder"] = lock.categoryorder;
+  }
+  if (Array.isArray(lock.categoryarray) && lock.categoryarray.length) {
+    relayout["xaxis.categoryarray"] = lock.categoryarray.slice();
+  }
+
+  if (host.layout?.yaxis2) {
+    relayout["yaxis2.automargin"] = false;
+  }
+
+  return relayout;
+}
+
+function strictValueOverlayTraceIndices(host) {
+  return (host?.data || [])
+    .map((trace, index) => (isStrictValueErrorOverlayTrace(trace) ? index : -1))
+    .filter((index) => index >= 0);
+}
+
+async function deleteStrictValueOverlayTraces(host) {
+  const indices = strictValueOverlayTraceIndices(host);
+  if (!indices.length) {
+    return;
+  }
+  await Plotly.deleteTraces(host, indices);
+}
+
+async function calibrateCanonicalPlotGeometry(host) {
+  if (!hostUsesCanonicalGroupedBarGeometry(host)) {
+    return;
+  }
+  if (hasCanonicalPlotGeometry(host)) {
+    return;
+  }
+
+  // Capture reference frame from main bars only (no error-bar overlays).
+  await deleteStrictValueOverlayTraces(host);
+
+  const hostMargin = host.layout?.margin || {};
+  const calibrationRelayout = {
+    ...buildPreCanonicalGeometryRelayout(host),
+    "margin.l": FREQUENCY_CHART_MIN_MARGIN_L,
+    "margin.r": hostMargin.r ?? 32,
+    "margin.t": hostMargin.t ?? 36,
+    "margin.b": effectiveFrequencyMarginBottom(host, hostMargin.b),
+    "xaxis.domain": [0, 1],
+    "yaxis.domain": [0, 1],
+    "xaxis.anchor": "y",
+    "yaxis.anchor": "x",
+    "xaxis.automargin": false,
+    "yaxis.automargin": false,
+    "yaxis.rangemode": "tozero",
+  };
+  const bounds = computeGroupedBarCalibrationAxisBounds(host, "y");
+  if (bounds) {
+    calibrationRelayout["yaxis.range"] = [bounds.min, bounds.max];
+    calibrationRelayout["yaxis.autorange"] = false;
+  }
+
+  if (Object.keys(calibrationRelayout).length) {
+    await Plotly.relayout(host, calibrationRelayout);
+    await awaitLayoutSettle();
+  }
+
+  const key = stackedAxisLockKey(host);
+  const xaxis = host.layout?.xaxis || {};
+  state.stackedAxisLabelLocks[key] = {
+    ...(state.stackedAxisLabelLocks[key] || {}),
+    ...collectXaxisLabelLockProps(xaxis),
+    ...readPlotGeometryFromHost(host),
+  };
+
+  await rebuildStrictValueErrorBarOverlays(host, { forceRebuild: state.showErrorBars });
+  await finishStrictValueErrorBarOverlays(host);
+  await awaitLayoutSettle();
+  await applyCanonicalGroupedBarRelayout(host);
+}
+
+function sealCanonicalLayoutState(host) {
+  const lock = state.stackedAxisLabelLocks[stackedAxisLockKey(host)];
+  if (!lock?.canonicalGeometry) {
+    return;
+  }
+
+  host.layout = host.layout || {};
+  host.layout.margin = {
+    ...(host.layout.margin || {}),
+    ...lock.margin,
+  };
+
+  host.layout.xaxis = {
+    ...(host.layout.xaxis || {}),
+    domain: lock.domains.x.slice(),
+    anchor: lock.anchors.x || "y",
+    automargin: false,
+    ticklabelposition: lock.ticklabelposition || "outside",
+  };
+  ["tickmode", "tickangle", "ticklabelstandoff", "ticklabeloverflow", "automargin", "type", "side"].forEach((key) => {
+    if (lock[key] !== undefined) {
+      host.layout.xaxis[key] = lock[key];
+    }
+  });
+  if (Array.isArray(lock.range) && lock.range.length === 2) {
+    host.layout.xaxis.range = [lock.range[0], lock.range[1]];
+    host.layout.xaxis.autorange = false;
+  }
+  if (Array.isArray(lock.tickvals) && lock.tickvals.length) {
+    host.layout.xaxis.tickvals = lock.tickvals.slice();
+  }
+  if (Array.isArray(lock.ticktext) && lock.ticktext.length) {
+    host.layout.xaxis.ticktext = lock.ticktext.slice();
+  }
+  if (typeof lock.categoryorder === "string" && lock.categoryorder.length) {
+    host.layout.xaxis.categoryorder = lock.categoryorder;
+  }
+  if (Array.isArray(lock.categoryarray) && lock.categoryarray.length) {
+    host.layout.xaxis.categoryarray = lock.categoryarray.slice();
+  }
+
+  host.layout.yaxis = {
+    ...(host.layout.yaxis || {}),
+    domain: lock.domains.y.slice(),
+    anchor: lock.anchors.y || "x",
+    automargin: false,
+  };
+  const yaxisTick = lock.yaxisTick || {};
+  ["tickmode", "dtick", "tick0", "nticks", "tickformat", "side", "position"].forEach((key) => {
+    if (yaxisTick[key] !== undefined) {
+      host.layout.yaxis[key] = yaxisTick[key];
+    }
+  });
+
+  if (lock.domains.y2 && host.layout.yaxis2) {
+    host.layout.yaxis2 = {
+      ...(host.layout.yaxis2 || {}),
+      domain: lock.domains.y2.slice(),
+      anchor: lock.anchors.y2,
+      automargin: false,
+    };
+  }
+}
+
+function traceAxisName(trace, defaultAxis = "y") {
+  return trace?.yaxis === "y2" ? "y2" : defaultAxis;
+}
+
+function traceShouldCountForBounds(host, trace, options = {}) {
+  if (!trace || String(trace.type || "").includes("polar")) {
+    return false;
+  }
+  if (!isTraceVisible(trace)) {
+    return false;
+  }
+
+  const figureId = host?.dataset?.figureId || "";
+  const effectiveShowErrorBars = Boolean(options.simulateErrorBarsOn) || state.showErrorBars;
+  const isOverlay = isErrorBarOverlayTrace(trace) || isStrictValueErrorOverlayTrace(trace);
+  if (isOverlay) {
+    return effectiveShowErrorBars;
+  }
+
+  const isStacked = String(host.layout?.barmode || "").toLowerCase() === "stack";
+  if (effectiveShowErrorBars && strictValueHoverFigureIds.has(figureId) && supportsErrorBars(trace)) {
+    return false;
+  }
+  if (effectiveShowErrorBars && isStacked && strictStackedBarOverlayFigureIds.has(figureId) && trace.type === "bar") {
+    return false;
+  }
+  if (isScatterWindDewptCiBand(trace)) {
+    return effectiveShowErrorBars;
+  }
+  if (trace.type === "bar" || trace.type === "scatter") {
+    return true;
+  }
+  return false;
+}
+
+function computeResponsiveAxisBounds(host, axisName = "y", options = {}) {
+  const layout = host?.layout || {};
+  if (layout.polar) {
+    return null;
+  }
+
+  const barmode = String(layout.barmode || "").toLowerCase();
+  const traces = host?.data || [];
+  let minValue = Number.POSITIVE_INFINITY;
+  let maxValue = Number.NEGATIVE_INFINITY;
+
+  const includeBounds = (bounds) => {
+    if (!bounds) {
+      return;
+    }
+    minValue = Math.min(minValue, bounds.min);
+    maxValue = Math.max(maxValue, bounds.max);
+  };
+
+  if (barmode === "stack") {
+    const cumulativeByAxis = new Map();
+    traces.forEach((trace) => {
+      if (!traceShouldCountForBounds(host, trace, options)) {
+        return;
+      }
+      if (traceAxisName(trace) !== axisName) {
+        return;
+      }
+      if (isErrorBarOverlayTrace(trace) || isStrictValueErrorOverlayTrace(trace)) {
+        includeBounds(traceBoundsWithError(trace, { includeLatentError: false }));
+        return;
+      }
+      if (trace.type === "bar") {
+        const xValues = valueArray(trace.x);
+        const yValues = numericArray(trace.y);
+        const count = Math.min(xValues.length, yValues.length);
+        if (!count) {
+          return;
+        }
+
+        const yStdArray = pointwiseStdArray(yValues).slice(0, count);
+        const yStd = representativeStd(yStdArray);
+        const cumulative = cumulativeByAxis.get(axisName) || new Map();
+
+        for (let i = 0; i < count; i += 1) {
+          const xKey = String(xValues[i] ?? i);
+          const base = cumulative.get(xKey) || 0;
+          const yNum = Number(yValues[i]);
+          const top = base + (Number.isFinite(yNum) ? yNum : 0);
+          cumulative.set(xKey, top);
+
+          const sd = Number(yStdArray[i]);
+          const errPlus = Math.max(0, Number.isFinite(sd) ? sd : yStd);
+          const errMinus = Math.min(errPlus, Math.max(0, top));
+          minValue = Math.min(minValue, top - errMinus);
+          maxValue = Math.max(maxValue, top + errPlus);
+        }
+        cumulativeByAxis.set(axisName, cumulative);
+        return;
+      }
+      includeBounds(traceBoundsWithError(trace, { includeLatentError: true }));
+    });
+  } else {
+    traces.forEach((trace) => {
+      if (!traceShouldCountForBounds(host, trace, options)) {
+        return;
+      }
+      if (traceAxisName(trace) !== axisName) {
+        return;
+      }
+      includeBounds(traceBoundsWithError(trace, { includeLatentError: true }));
+    });
+  }
+
+  return finalizeAxisBounds(minValue, maxValue);
+}
+
+function computeGroupedBarCalibrationAxisBounds(host, axisName = "y") {
+  const traces = host?.data || [];
+  let minValue = Number.POSITIVE_INFINITY;
+  let maxValue = Number.NEGATIVE_INFINITY;
+
+  const includeBounds = (bounds) => {
+    if (!bounds) {
+      return;
+    }
+    minValue = Math.min(minValue, bounds.min);
+    maxValue = Math.max(maxValue, bounds.max);
+  };
+
+  traces.forEach((trace) => {
+    if (isErrorBarOverlayTrace(trace) || isStrictValueErrorOverlayTrace(trace) || trace.type !== "bar") {
+      return;
+    }
+    if (traceAxisName(trace) !== axisName) {
+      return;
+    }
+    includeBounds(traceBoundsWithError(trace, { includeLatentError: true }));
+  });
+
+  return finalizeAxisBounds(minValue, maxValue);
+}
+
+function computeStrictGroupedBarAxisBounds(host, axisName = "y", options = {}) {
+  const traces = host?.data || [];
+  const visibleAt = options.projectedVisible || ((trace) => isTraceVisible(trace));
+  let minValue = Number.POSITIVE_INFINITY;
+  let maxValue = Number.NEGATIVE_INFINITY;
+
+  const includeBounds = (bounds) => {
+    if (!bounds) {
+      return;
+    }
+    minValue = Math.min(minValue, bounds.min);
+    maxValue = Math.max(maxValue, bounds.max);
+  };
+
+  // Always derive range from visible main bar traces plus latent SD headroom.
+  // Overlay traces exist for rendering only; switching to overlay-based bounds
+  // on error-bar toggle was resetting the axis to the all-series default.
+  traces.forEach((trace, index) => {
+    if (!visibleAt(trace, index) || isErrorBarOverlayTrace(trace) || trace.type !== "bar") {
+      return;
+    }
+    if (traceAxisName(trace) !== axisName) {
+      return;
+    }
+    includeBounds(traceBoundsWithError(trace, { includeLatentError: true }));
+  });
+
+  return finalizeAxisBounds(minValue, maxValue);
+}
+
+function computeGroupedBarBoundsAfterLegendToggle(host, affectedIndices, nextVisibility) {
+  const projectedVisible = (trace, index) => projectedTraceVisible(trace, index, affectedIndices, nextVisibility);
+  const bounds = {};
+  const yBounds = computeStrictGroupedBarAxisBounds(host, "y", { projectedVisible });
+  if (yBounds) {
+    bounds.y = yBounds;
+  }
+  if (host.layout?.yaxis2) {
+    const y2Bounds = computeStrictGroupedBarAxisBounds(host, "y2", { projectedVisible });
+    if (y2Bounds) {
+      bounds.y2 = y2Bounds;
+    }
+  }
+  return bounds;
+}
+
+function buildGroupedBarLegendToggleLayoutPatch(host, projectedBounds) {
+  const lock = state.stackedAxisLabelLocks[stackedAxisLockKey(host)] || {};
+  const layoutPatch = {
+    ...stableFrequencyAxisRelayout(host),
+    "xaxis.automargin": false,
+    "yaxis.automargin": false,
+  };
+
+  if (projectedBounds.y) {
+    layoutPatch["yaxis.range"] = [0, Number(projectedBounds.y.max)];
+    layoutPatch["yaxis.autorange"] = false;
+    layoutPatch["yaxis.rangemode"] = "tozero";
+  } else if (hostUsesCanonicalGroupedBarGeometry(host)) {
+    layoutPatch["yaxis.range"] = [0, 1];
+    layoutPatch["yaxis.autorange"] = false;
+  }
+
+  if (projectedBounds.y2 && host.layout?.yaxis2) {
+    layoutPatch["yaxis2.range"] = [projectedBounds.y2.min, projectedBounds.y2.max];
+    layoutPatch["yaxis2.autorange"] = false;
+    layoutPatch["yaxis2.automargin"] = false;
+  }
+
+  if (hasCanonicalPlotGeometry(host)) {
+    if (lock.anchors?.x) {
+      layoutPatch["xaxis.anchor"] = lock.anchors.x;
+    }
+    if (lock.anchors?.y) {
+      layoutPatch["yaxis.anchor"] = lock.anchors.y;
+    }
+    if (lock.domains?.x) {
+      layoutPatch["xaxis.domain"] = lock.domains.x.slice();
+    }
+    if (lock.domains?.y) {
+      layoutPatch["yaxis.domain"] = lock.domains.y.slice();
+    }
+    if (lock.margin) {
+      ["l", "r", "t", "b"].forEach((key) => {
+        if (lock.margin[key] !== undefined) {
+          layoutPatch[`margin.${key}`] = lock.margin[key];
+        }
+      });
+    }
+  }
+
+  return layoutPatch;
+}
+
+function applyCanonicalGroupedBarLegendToggle(host, affectedIndices, nextVisibility) {
+  if (!hostUsesCanonicalGroupedBarGeometry(host)) {
+    return Promise.resolve(null);
+  }
+
+  const projectedBounds = computeGroupedBarBoundsAfterLegendToggle(host, affectedIndices, nextVisibility);
+  const layoutPatch = buildGroupedBarLegendToggleLayoutPatch(host, projectedBounds);
+  return Plotly.update(
+    host,
+    { visible: nextVisibility },
+    layoutPatch,
+    affectedIndices,
+  ).then(() => ({ boundsApplied: true }));
+}
+
+function finalizeGroupedBarLegendToggle(host) {
+  captureFrequencyAxisLabelLock(host);
+  sealCanonicalLayoutState(host);
+  return Promise.resolve();
+}
+
+function resolveResponsiveAxisBounds(host, axisName = "y", options = {}) {
+  if (hostUsesCanonicalGroupedBarGeometry(host) && !options.simulateErrorBarsOn) {
+    return computeStrictGroupedBarAxisBounds(host, axisName);
+  }
+  return computeResponsiveAxisBounds(host, axisName, options);
+}
+
+function buildResponsiveRangeRelayout(host) {
+  const relayout = {};
+  ["y", "y2"].forEach((axisName) => {
+    const layoutKey = axisName === "y2" ? "yaxis2" : "yaxis";
+    if (axisName === "y2" && !host.layout?.[layoutKey]) {
+      return;
+    }
+
+    const bounds = resolveResponsiveAxisBounds(host, axisName);
+    if (bounds) {
+      relayout[`${layoutKey}.range`] = [bounds.min, bounds.max];
+      relayout[`${layoutKey}.autorange`] = false;
+    } else if (hostUsesCanonicalGroupedBarGeometry(host)) {
+      relayout[`${layoutKey}.range`] = [0, 1];
+      relayout[`${layoutKey}.autorange`] = false;
+    } else if (axisName === "y") {
+      relayout["yaxis.autorange"] = true;
+      relayout["yaxis.range"] = null;
+    } else {
+      relayout[`${layoutKey}.autorange`] = true;
+      relayout[`${layoutKey}.range`] = null;
+    }
+  });
+  return relayout;
+}
+
+function pinGroupedBarYRangeBaseline(relayout) {
+  const range = relayout["yaxis.range"];
+  if (Array.isArray(range) && range.length === 2 && Number.isFinite(Number(range[1]))) {
+    relayout["yaxis.range"] = [0, Number(range[1])];
+    relayout["yaxis.autorange"] = false;
+    relayout["yaxis.rangemode"] = "tozero";
+  }
+  return relayout;
+}
+
+function buildCanonicalGroupedBarRelayout(host) {
+  const lock = state.stackedAxisLabelLocks[stackedAxisLockKey(host)] || {};
+  const rangeRelayout = pinGroupedBarYRangeBaseline(buildResponsiveRangeRelayout(host));
+  const frameRelayout = stableFrequencyAxisRelayout(host);
+  const relayout = {
+    ...frameRelayout,
+    ...rangeRelayout,
+    "xaxis.automargin": false,
+    "yaxis.automargin": false,
+  };
+
+  if (lock.anchors?.x) {
+    relayout["xaxis.anchor"] = lock.anchors.x;
+  }
+  if (lock.anchors?.y) {
+    relayout["yaxis.anchor"] = lock.anchors.y;
+  }
+  if (lock.domains?.x) {
+    relayout["xaxis.domain"] = lock.domains.x.slice();
+  }
+  if (lock.domains?.y) {
+    relayout["yaxis.domain"] = lock.domains.y.slice();
+  }
+  if (lock.margin) {
+    ["l", "r", "t", "b"].forEach((key) => {
+      if (lock.margin[key] !== undefined) {
+        relayout[`margin.${key}`] = lock.margin[key];
+      }
+    });
+  }
+
+  if (host.layout?.yaxis2) {
+    relayout["yaxis2.automargin"] = false;
+  }
+  return relayout;
+}
+
+function applyCanonicalGroupedBarRelayout(host) {
+  const relayout = buildCanonicalGroupedBarRelayout(host);
+  if (!Object.keys(relayout).length) {
+    return Promise.resolve();
+  }
+
+  return Plotly.relayout(host, relayout)
+    .then(() => Plotly.relayout(host, relayout))
+    .then(() => captureFrequencyAxisLabelLock(host));
+}
+
+function applyResponsiveAxisRange(host) {
+  if (!host || host?.layout?.polar) {
+    return Promise.resolve();
+  }
+
+  if (host.dataset?.figureId === "scatter_wind_dewpt") {
+    return relayoutScatterWindDewptAxes(host);
+  }
+
+  const rangeRelayout = buildResponsiveRangeRelayout(host);
+  const geometryRelayout = stableFrequencyAxisRelayout(host);
+  const useCanonicalGeometry = hostUsesCanonicalGroupedBarGeometry(host) && hasCanonicalPlotGeometry(host);
+
+  if (!Object.keys(rangeRelayout).length && !Object.keys(geometryRelayout).length) {
+    return Promise.resolve();
+  }
+
+  if (useCanonicalGeometry) {
+    return applyCanonicalGroupedBarRelayout(host);
+  }
+
+  const relayout = {
+    ...geometryRelayout,
+    ...rangeRelayout,
+  };
+  return Plotly.relayout(host, relayout).then(() => captureFrequencyAxisLabelLock(host));
+}
+
+async function refreshErrorBarsOnVisibleCharts() {
+  const visibleCount = state.latestFigures.length
+    ? Math.min(state.latestFigures.length, els.charts.length)
+    : 0;
+
+  await Promise.all(Array.from({ length: visibleCount }, async (_, idx) => {
+    const host = els.charts[idx];
+    if (!host?.data?.length || host.layout?.polar) {
+      return;
+    }
+
+    await applyHostErrorBars(host);
+    await rebuildStackErrorBarOverlays(host);
+    await rebuildStrictValueErrorBarOverlays(host, { forceRebuild: true });
+    await finishStrictValueErrorBarOverlays(host);
+    await applyResponsiveAxisRange(host);
+  }));
+}
+
 function maxWithError(trace) {
   const bounds = traceBoundsWithError(trace);
   return bounds ? bounds.max : null;
@@ -2245,88 +3199,7 @@ function traceUpperBound(trace) {
 }
 
 function expandAxesForErrorBars(host) {
-  if (!host || host?.layout?.polar || !state.showErrorBars) {
-    return Promise.resolve();
-  }
-
-  const traces = host.data || [];
-  const axisMaxima = new Map();
-  const barmode = String(host.layout?.barmode || "").toLowerCase();
-  const stackByAxisAndX = new Map();
-
-  traces.forEach((trace) => {
-    if (!trace || String(trace.type || "").includes("polar") || !trace.error_y?.visible) {
-      return;
-    }
-
-    const axisKey = axisLayoutKeyFromTraceAxis(trace.yaxis, "y");
-
-    if (trace.type === "bar" && barmode === "stack") {
-      const xValues = valueArray(trace.x);
-      const yValues = numericArray(trace.y);
-      const errValues = valueArray(trace.error_y?.array);
-      const fallbackError = Number(trace.error_y?.value);
-
-      for (let i = 0; i < yValues.length; i += 1) {
-        const xKey = String(xValues[i] ?? i);
-        const yNum = Number(yValues[i]);
-        if (!Number.isFinite(yNum)) {
-          continue;
-        }
-
-        const errNum = Number(errValues[i]);
-        const err = Number.isFinite(errNum) ? errNum : (Number.isFinite(fallbackError) ? fallbackError : 0);
-        const stackKey = `${axisKey}::${xKey}`;
-        const entry = stackByAxisAndX.get(stackKey) || { total: 0, error: 0 };
-        entry.total += yNum;
-        entry.error = Math.max(entry.error, Math.max(0, err));
-        stackByAxisAndX.set(stackKey, entry);
-      }
-      return;
-    }
-
-    const candidateMax = traceUpperBound(trace);
-    if (!Number.isFinite(candidateMax)) {
-      return;
-    }
-    const existing = axisMaxima.get(axisKey);
-    axisMaxima.set(axisKey, existing == null ? candidateMax : Math.max(existing, candidateMax));
-  });
-
-  if (barmode === "stack") {
-    stackByAxisAndX.forEach((entry, stackKey) => {
-      const axisKey = stackKey.split("::")[0];
-      const candidateMax = entry.total + entry.error;
-      const existing = axisMaxima.get(axisKey);
-      axisMaxima.set(axisKey, existing == null ? candidateMax : Math.max(existing, candidateMax));
-    });
-  }
-
-  if (!axisMaxima.size) {
-    return Promise.resolve();
-  }
-
-  const relayout = {};
-  axisMaxima.forEach((axisMax, axisKey) => {
-    const axisLayout = host.layout?.[axisKey];
-    if (!axisLayout || !Array.isArray(axisLayout.range) || axisLayout.range.length < 2) {
-      return;
-    }
-
-    const currentMin = Number(axisLayout.range[0]);
-    const currentMax = Number(axisLayout.range[1]);
-    if (!Number.isFinite(currentMin) || !Number.isFinite(currentMax)) {
-      return;
-    }
-
-    const paddedMax = paddedAxisCeiling(currentMin, axisMax);
-    if (Number.isFinite(paddedMax) && paddedMax > currentMax) {
-      relayout[`${axisKey}.range`] = [currentMin, paddedMax];
-      relayout[`${axisKey}.autorange`] = false;
-    }
-  });
-
-  return Object.keys(relayout).length ? Plotly.relayout(host, relayout) : Promise.resolve();
+  return applyResponsiveAxisRange(host);
 }
 
 function resolvedTracePoints(host, trace, traceIndex) {
@@ -2451,10 +3324,90 @@ function clearPlotErrorBars(host) {
   return Promise.all(restyles).then(() => undefined);
 }
 
+function buildGroupedBarOverlayErrorY(host, sourceTrace) {
+  const figureId = host?.dataset?.figureId || "";
+  const yValues = numericArray(sourceTrace?.y);
+  const count = yValues.length;
+  if (count <= 1) {
+    return null;
+  }
+
+  const yStdArray = pointwiseStdArray(yValues).slice(0, count);
+  const yStd = representativeStd(yStdArray);
+  if (!yStdArray.some((value) => Number(value) > 0)) {
+    return null;
+  }
+
+  const sourceVisible = isTraceVisible(sourceTrace);
+  return {
+    type: "data",
+    array: yStdArray,
+    arrayminus: yValues.slice(0, count).map((value, i) => {
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue)) {
+        return 0;
+      }
+      const sd = Number(yStdArray[i]);
+      const eff = Number.isFinite(sd) ? sd : yStd;
+      return Math.min(eff, Math.max(0, numericValue));
+    }),
+    symmetric: false,
+    visible: state.showErrorBars && sourceVisible,
+    thickness: 1.8,
+    width: 5,
+    color: customErrorBarColor(sourceTrace, figureId),
+  };
+}
+
+function syncGroupedBarOverlayState(host) {
+  const traces = host?.data || [];
+  const visibilityIndices = [];
+  const visibilityValues = [];
+  const errorIndices = [];
+  const errorYValues = [];
+
+  traces.forEach((trace, index) => {
+    if (!isStrictValueErrorOverlayTrace(trace)) {
+      return;
+    }
+
+    const sourceIndex = Number(trace?.meta?.sourceTrace);
+    if (!Number.isInteger(sourceIndex) || sourceIndex < 0 || sourceIndex >= traces.length) {
+      return;
+    }
+
+    const sourceTrace = traces[sourceIndex];
+    const sourceVisible = isTraceVisible(sourceTrace);
+    const overlayVisible = sourceVisible ? true : "legendonly";
+    if (trace?.visible !== overlayVisible) {
+      visibilityIndices.push(index);
+      visibilityValues.push(overlayVisible);
+    }
+
+    const errorY = buildGroupedBarOverlayErrorY(host, sourceTrace);
+    if (errorY) {
+      errorIndices.push(index);
+      errorYValues.push(errorY);
+    }
+  });
+
+  const restyles = [];
+  if (visibilityIndices.length) {
+    restyles.push(Plotly.restyle(host, { visible: visibilityValues }, visibilityIndices));
+  }
+  if (errorIndices.length) {
+    restyles.push(Plotly.restyle(host, { error_y: errorYValues }, errorIndices));
+  }
+
+  return restyles.length ? Promise.all(restyles) : Promise.resolve();
+}
+
 function syncErrorBarOverlayVisibility(host) {
   const traces = host?.data || [];
-  const indices = [];
-  const values = [];
+  const visibilityIndices = [];
+  const visibilityValues = [];
+  const errorIndices = [];
+  const errorVisibilityValues = [];
 
   traces.forEach((trace, index) => {
     if (!isErrorBarOverlayTrace(trace)) {
@@ -2467,18 +3420,33 @@ function syncErrorBarOverlayVisibility(host) {
     }
 
     const sourceTrace = traces[sourceIndex];
-    const visible = isTraceVisible(sourceTrace) ? true : "legendonly";
+    const sourceVisible = isTraceVisible(sourceTrace);
+    const visible = sourceVisible ? true : "legendonly";
     if (trace?.visible !== visible) {
-      indices.push(index);
-      values.push(visible);
+      visibilityIndices.push(index);
+      visibilityValues.push(visible);
+    }
+
+    if (isStrictValueErrorOverlayTrace(trace) && trace?.error_y) {
+      const errorVisible = state.showErrorBars && sourceVisible;
+      if (Boolean(trace.error_y.visible) !== errorVisible) {
+        errorIndices.push(index);
+        errorVisibilityValues.push(errorVisible);
+      }
     }
   });
 
-  if (!indices.length) {
-    return Promise.resolve();
+  const restyles = [];
+  if (visibilityIndices.length) {
+    restyles.push(Plotly.restyle(host, { visible: visibilityValues }, visibilityIndices));
+  }
+  if (errorIndices.length) {
+    restyles.push(Plotly.restyle(host, {
+      "error_y.visible": errorVisibilityValues,
+    }, errorIndices));
   }
 
-  return Plotly.restyle(host, { visible: values }, indices);
+  return restyles.length ? Promise.all(restyles) : Promise.resolve();
 }
 
 function rebuildStackErrorBarOverlays(host) {
@@ -2509,10 +3477,11 @@ function rebuildStackErrorBarOverlays(host) {
   });
 }
 
-function buildStrictValueErrorOverlayTraces(host) {
+function buildStrictValueErrorOverlayTraces(host, options = {}) {
   const traces = host?.data || [];
   const overlays = [];
   const figureId = host?.dataset?.figureId || "";
+  const forceErrorVisible = Boolean(options.forceErrorVisible);
   const isStackedBars = String(host?.layout?.barmode || "").toLowerCase() === "stack";
   const useBarOverlaysForBars = strictGroupedBarOverlayFigureIds.has(figureId);
 
@@ -2603,6 +3572,10 @@ function buildStrictValueErrorOverlayTraces(host) {
     if (isErrorBarOverlayTrace(trace)) {
       return;
     }
+    const includeLegendHidden = Boolean(options.includeLegendHidden);
+    if (!includeLegendHidden && !isTraceVisible(trace)) {
+      return;
+    }
 
     const yValues = numericArray(trace.y);
     const xValues = valueArray(trace.x);
@@ -2619,6 +3592,8 @@ function buildStrictValueErrorOverlayTraces(host) {
 
     const x = (xValues.length ? xValues : Array.from({ length: count }, (_, i) => i)).slice(0, count);
     const y = yValues.slice(0, count);
+    const sourceVisible = isTraceVisible(trace);
+    const errorVisible = (forceErrorVisible || state.showErrorBars) && sourceVisible;
 
     const errorY = {
       type: "data",
@@ -2633,7 +3608,7 @@ function buildStrictValueErrorOverlayTraces(host) {
         return Math.min(eff, Math.max(0, numericValue));
       }),
       symmetric: false,
-      visible: true,
+      visible: errorVisible,
       thickness: 1.8,
       width: 5,
       color: customErrorBarColor(trace, figureId),
@@ -2648,7 +3623,8 @@ function buildStrictValueErrorOverlayTraces(host) {
         yaxis: trace.yaxis,
         showlegend: false,
         hoverinfo: "skip",
-        visible: isTraceVisible(trace) ? true : "legendonly",
+        cliponaxis: true,
+        visible: sourceVisible ? true : "legendonly",
         marker: {
           color: "rgba(0,0,0,0)",
           opacity: 0,
@@ -2733,16 +3709,77 @@ function buildStrictValueErrorOverlayTraces(host) {
   return finalizeErrorBarOverlays(overlays);
 }
 
-function rebuildStrictValueErrorBarOverlays(host) {
+async function ensureGroupedBarOverlaySlots(host) {
+  const desiredOverlays = buildStrictValueErrorOverlayTraces(host, { includeLegendHidden: true });
+  const desiredSources = new Set(desiredOverlays.map((overlay) => overlay.meta.sourceTrace));
+
+  const existingBySource = new Map();
+  (host?.data || []).forEach((trace, index) => {
+    if (!isStrictValueErrorOverlayTrace(trace)) {
+      return;
+    }
+    const sourceIndex = Number(trace?.meta?.sourceTrace);
+    if (Number.isInteger(sourceIndex) && sourceIndex >= 0) {
+      existingBySource.set(sourceIndex, index);
+    }
+  });
+
+  const deleteIndices = [];
+  existingBySource.forEach((index, sourceIndex) => {
+    if (!desiredSources.has(sourceIndex)) {
+      deleteIndices.push(index);
+    }
+  });
+  deleteIndices.sort((a, b) => b - a);
+  for (let i = 0; i < deleteIndices.length; i += 1) {
+    await Plotly.deleteTraces(host, deleteIndices[i]);
+  }
+
+  const existingSources = new Set();
+  (host?.data || []).forEach((trace) => {
+    if (!isStrictValueErrorOverlayTrace(trace)) {
+      return;
+    }
+    const sourceIndex = Number(trace?.meta?.sourceTrace);
+    if (Number.isInteger(sourceIndex) && sourceIndex >= 0) {
+      existingSources.add(sourceIndex);
+    }
+  });
+
+  const overlaysToAdd = desiredOverlays.filter((overlay) => !existingSources.has(overlay.meta.sourceTrace));
+  if (overlaysToAdd.length) {
+    await Plotly.addTraces(host, overlaysToAdd);
+  }
+}
+
+async function syncGroupedBarOverlaysPersistent(host, options = {}) {
+  if (options.forceRebuild && state.showErrorBars) {
+    await deleteStrictValueOverlayTraces(host);
+    const overlays = buildStrictValueErrorOverlayTraces(host, {
+      includeLegendHidden: true,
+      forceErrorVisible: true,
+    });
+    if (overlays.length) {
+      await Plotly.addTraces(host, overlays);
+    }
+    return syncGroupedBarOverlayState(host);
+  }
+
+  await ensureGroupedBarOverlaySlots(host);
+  return syncGroupedBarOverlayState(host);
+}
+
+function rebuildStrictValueErrorBarOverlays(host, options = {}) {
   const figureId = host?.dataset?.figureId || "";
   if (!strictValueHoverFigureIds.has(figureId)) {
     return Promise.resolve();
   }
 
-  const overlayIndices = (host?.data || [])
-    .map((trace, index) => (isStrictValueErrorOverlayTrace(trace) ? index : -1))
-    .filter((index) => index >= 0);
+  if (strictGroupedBarOverlayFigureIds.has(figureId)) {
+    return syncGroupedBarOverlaysPersistent(host, options);
+  }
 
+  const overlayIndices = strictValueOverlayTraceIndices(host);
   const removeExisting = overlayIndices.length
     ? Plotly.deleteTraces(host, overlayIndices)
     : Promise.resolve();
@@ -3251,12 +4288,11 @@ function applyHostErrorBars(host) {
 
   const traces = host.data || [];
   const restylePromises = [];
-  const axisMaxima = new Map();
-  const isStackedBars = String(host.layout?.barmode || "").toLowerCase() === "stack";
 
   traces.forEach((trace, traceIndex) => {
     const baseHover = ensureBaseHovertemplate(trace, host?.layout);
     const unitSuffix = trace?.meta?.hoverUnitSuffix || "";
+    const isStackedBars = String(host.layout?.barmode || "").toLowerCase() === "stack";
     const isStackedBarTrace = isStackedBars && trace?.type === "bar";
     if (!trace || isErrorBarOverlayTrace(trace) || String(trace.type || "").includes("polar") || !supportsErrorBars(trace)) {
       clearTraceErrorBars(trace);
@@ -3338,70 +4374,10 @@ function applyHostErrorBars(host) {
       }
     }
 
-    if (!isStackedBarTrace) {
-      const candidateMax = maxWithError({
-        ...trace,
-        error_y: yError,
-      });
-      if (Number.isFinite(candidateMax)) {
-        const axisKey = axisLayoutKeyFromTraceAxis(trace.yaxis, "y");
-        const existing = axisMaxima.get(axisKey);
-        axisMaxima.set(axisKey, existing == null ? candidateMax : Math.max(existing, candidateMax));
-      }
-    }
-
     restylePromises.push(restyleSingleTrace(host, traceIndex, update));
   });
 
-  return Promise.all(restylePromises)
-    .then(() => {
-      const relayout = {};
-      axisMaxima.forEach((axisMax, axisKey) => {
-        const axisLayout = host.layout?.[axisKey];
-        if (!axisLayout || !Array.isArray(axisLayout.range) || axisLayout.range.length < 2) {
-          return;
-        }
-
-        const currentMin = Number(axisLayout.range[0]);
-        const currentMax = Number(axisLayout.range[1]);
-        if (!Number.isFinite(currentMin) || !Number.isFinite(currentMax)) {
-          return;
-        }
-
-        const paddedMax = paddedAxisCeiling(currentMin, axisMax);
-        if (Number.isFinite(paddedMax) && paddedMax > currentMax) {
-          relayout[`${axisKey}.range`] = [currentMin, paddedMax];
-          relayout[`${axisKey}.autorange`] = false;
-        }
-      });
-
-      const relayoutPromise = Object.keys(relayout).length ? Plotly.relayout(host, relayout) : Promise.resolve();
-
-      if (!isStackedBars) {
-        if (!useStrictValueHover) {
-          return relayoutPromise;
-        }
-        return relayoutPromise
-          .then(() => rebuildStrictValueErrorBarOverlays(host))
-          .then(() => finishStrictValueErrorBarOverlays(host));
-      }
-
-      const overlayIndices = (host.data || [])
-        .map((trace, index) => (isErrorBarOverlayTrace(trace) ? index : -1))
-        .filter((index) => index >= 0);
-
-      return relayoutPromise
-        .then(() => (overlayIndices.length ? Plotly.deleteTraces(host, overlayIndices) : Promise.resolve()))
-        .then(() => {
-          if (!state.showErrorBars || useStrictValueHover) {
-            return Promise.resolve();
-          }
-          const overlays = buildStackComponentOverlayTraces(host);
-          return overlays.length ? Plotly.addTraces(host, overlays) : Promise.resolve();
-        })
-        .then(() => rebuildStrictValueErrorBarOverlays(host))
-        .then(() => finishStrictValueErrorBarOverlays(host));
-    });
+  return Promise.all(restylePromises);
 }
 
 function renderErrorBarsToggle() {
@@ -3690,7 +4666,7 @@ function relayoutScatterWindDewptAxes(host, chartHeight = null) {
 
 function applyPersistentAxisLock(figure, figureId) {
   const layout = figure?.layout || {};
-  if (layout.polar) {
+  if (layout.polar || usesResponsiveYAxis(figureId)) {
     return;
   }
 
@@ -3729,8 +4705,7 @@ function applyPersistentAxisLock(figure, figureId) {
   }
 }
 
-function stackedAxisLockKey(host) {
-  const figureId = host?.dataset?.figureId || "";
+function frequencyAxisLockKey(figureId = "") {
   return [
     els.icao.value,
     figureId,
@@ -3739,6 +4714,10 @@ function stackedAxisLockKey(host) {
     els.monthEnd.value,
     els.invertMonth.checked ? "1" : "0",
   ].join("::");
+}
+
+function stackedAxisLockKey(host) {
+  return frequencyAxisLockKey(host?.dataset?.figureId || "");
 }
 
 const MONTH_AXIS_LABELS = new Set([
@@ -3994,144 +4973,143 @@ function enforceHourlyFrequencyAxis(figure, figureId) {
   figure.layout.xaxis = xaxis;
 }
 
-function captureStackedAxisLabelLock(host) {
-  if (!host || String(host?.layout?.barmode || "").toLowerCase() !== "stack") {
+function captureFrequencyAxisLabelLock(host) {
+  if (!hostUsesFrequencyAxisLabelLock(host)) {
     return;
   }
 
+  const key = stackedAxisLockKey(host);
+  const existing = state.stackedAxisLabelLocks[key] || {};
   const xaxis = host.layout?.xaxis || {};
   const lock = {
-    ticklabelposition: xaxis.ticklabelposition || "outside",
+    ...existing,
+    ...collectXaxisLabelLockProps(xaxis),
   };
 
-  ["tickmode", "tickangle", "ticklabelstandoff", "ticklabeloverflow", "automargin", "type", "side"].forEach((key) => {
-    if (xaxis[key] !== undefined) {
-      lock[key] = xaxis[key];
-    }
-  });
-
-  if (Array.isArray(xaxis.range) && xaxis.range.length === 2) {
-    lock.range = [xaxis.range[0], xaxis.range[1]];
-  }
-  if (Array.isArray(xaxis.tickvals) && xaxis.tickvals.length) {
-    lock.tickvals = xaxis.tickvals.slice();
-  }
-  if (Array.isArray(xaxis.ticktext) && xaxis.ticktext.length) {
-    lock.ticktext = xaxis.ticktext.slice();
-  }
-  if (Array.isArray(xaxis.categoryarray) && xaxis.categoryarray.length) {
-    lock.categoryarray = xaxis.categoryarray.slice();
-  }
-  if (typeof xaxis.categoryorder === "string" && xaxis.categoryorder.length) {
-    lock.categoryorder = xaxis.categoryorder;
+  if (existing.canonicalGeometry) {
+    lock.margin = existing.margin;
+    lock.domains = existing.domains;
+    lock.anchors = existing.anchors;
+    lock.yaxisTick = existing.yaxisTick;
+    lock.canonicalGeometry = true;
+    lock.geometryVersion = existing.geometryVersion;
+    lock.yAutomargin = false;
+    lock.y2Automargin = false;
+  } else if (!existing.margin || !existing.domains) {
+    Object.assign(lock, collectFrequencyPlotGeometryLock(host.layout || {}));
   }
 
-  const marginBottom = Number(host.layout?.margin?.b);
-  if (Number.isFinite(marginBottom)) {
-    lock.marginBottom = marginBottom;
-  }
-
-  state.stackedAxisLabelLocks[stackedAxisLockKey(host)] = lock;
+  state.stackedAxisLabelLocks[key] = lock;
 }
 
-function stableStackedAxisRelayout(host) {
-  if (!host || String(host?.layout?.barmode || "").toLowerCase() !== "stack") {
+function appendYaxisTickLockRelayout(relayout, lock) {
+  const yaxisTick = lock?.yaxisTick;
+  if (!yaxisTick) {
+    return;
+  }
+
+  ["tickmode", "dtick", "tick0", "nticks", "tickformat", "side", "position"].forEach((key) => {
+    if (yaxisTick[key] !== undefined) {
+      relayout[`yaxis.${key}`] = yaxisTick[key];
+    }
+  });
+}
+
+function appendFrequencyPlotGeometryRelayout(relayout, lock, host) {
+  const margin = lock?.margin;
+  if (margin) {
+    ["l", "r", "t", "b"].forEach((key) => {
+      if (margin[key] !== undefined) {
+        relayout[`margin.${key}`] = margin[key];
+      }
+    });
+  } else {
+    relayout["margin.b"] = effectiveFrequencyMarginBottom(host, lock?.marginBottom);
+    relayout["margin.l"] = FREQUENCY_CHART_MIN_MARGIN_L;
+  }
+
+  const domains = lock?.domains;
+  if (domains?.x) {
+    relayout["xaxis.domain"] = domains.x.slice();
+  }
+  if (domains?.y) {
+    relayout["yaxis.domain"] = domains.y.slice();
+  }
+  if (domains?.y2 && host.layout?.yaxis2) {
+    relayout["yaxis2.domain"] = domains.y2.slice();
+  }
+
+  const anchors = lock?.anchors;
+  relayout["xaxis.anchor"] = anchors?.x || "y";
+  relayout["yaxis.anchor"] = anchors?.y || "x";
+  if (anchors?.y2 && host.layout?.yaxis2) {
+    relayout["yaxis2.anchor"] = anchors.y2;
+  }
+
+  appendYaxisTickLockRelayout(relayout, lock);
+
+  relayout["yaxis.automargin"] = false;
+  if (host.layout?.yaxis2) {
+    relayout["yaxis2.automargin"] = false;
+  }
+}
+
+function stableFrequencyAxisRelayout(host) {
+  if (!hostUsesFrequencyAxisLabelLock(host)) {
     return {};
   }
 
   const lock = state.stackedAxisLabelLocks[stackedAxisLockKey(host)];
-  if (!lock) {
-    return {};
-  }
-
   const relayout = {
-    "xaxis.ticklabelposition": lock.ticklabelposition || "outside",
+    "xaxis.ticklabelposition": lock?.ticklabelposition || "outside",
   };
 
-  ["tickmode", "tickangle", "ticklabelstandoff", "ticklabeloverflow", "automargin", "type", "side"].forEach((key) => {
-    if (lock[key] !== undefined) {
-      relayout[`xaxis.${key}`] = lock[key];
+  if (lock) {
+    ["tickmode", "tickangle", "ticklabelstandoff", "ticklabeloverflow", "automargin", "type", "side"].forEach((key) => {
+      if (lock[key] !== undefined) {
+        relayout[`xaxis.${key}`] = lock[key];
+      }
+    });
+
+    if (Array.isArray(lock.range) && lock.range.length === 2) {
+      relayout["xaxis.range"] = [lock.range[0], lock.range[1]];
+      relayout["xaxis.autorange"] = false;
     }
-  });
-
-  if (Array.isArray(lock.range) && lock.range.length === 2) {
-    relayout["xaxis.range"] = [lock.range[0], lock.range[1]];
-    relayout["xaxis.autorange"] = false;
-  }
-  if (Array.isArray(lock.tickvals) && lock.tickvals.length) {
-    relayout["xaxis.tickvals"] = lock.tickvals.slice();
-  }
-  if (Array.isArray(lock.ticktext) && lock.ticktext.length) {
-    relayout["xaxis.ticktext"] = lock.ticktext.slice();
-  }
-  if (typeof lock.categoryorder === "string" && lock.categoryorder.length) {
-    relayout["xaxis.categoryorder"] = lock.categoryorder;
-  }
-  if (Array.isArray(lock.categoryarray) && lock.categoryarray.length) {
-    relayout["xaxis.categoryarray"] = lock.categoryarray.slice();
-  }
-  if (Number.isFinite(lock.marginBottom)) {
-    relayout["margin.b"] = lock.marginBottom;
+    if (Array.isArray(lock.tickvals) && lock.tickvals.length) {
+      relayout["xaxis.tickvals"] = lock.tickvals.slice();
+    }
+    if (Array.isArray(lock.ticktext) && lock.ticktext.length) {
+      relayout["xaxis.ticktext"] = lock.ticktext.slice();
+    }
+    if (typeof lock.categoryorder === "string" && lock.categoryorder.length) {
+      relayout["xaxis.categoryorder"] = lock.categoryorder;
+    }
+    if (Array.isArray(lock.categoryarray) && lock.categoryarray.length) {
+      relayout["xaxis.categoryarray"] = lock.categoryarray.slice();
+    }
   }
 
+  appendFrequencyPlotGeometryRelayout(relayout, lock, host);
   return relayout;
 }
 
+function captureStackedAxisLabelLock(host) {
+  captureFrequencyAxisLabelLock(host);
+}
+
+function stableStackedAxisRelayout(host) {
+  return stableFrequencyAxisRelayout(host);
+}
+
 function rescaleAfterLegendToggle(host) {
-  const layout = host.layout || {};
-
-  // Keep polar charts on their own scaling behavior.
-  if (layout.polar) {
-    return Promise.resolve();
-  }
-
-  if (host.dataset?.figureId === "scatter_wind_dewpt") {
-    return relayoutScatterWindDewptAxes(host);
-  }
-
-  const isStackedBars = String(layout.barmode || "").toLowerCase() === "stack";
-
-  if (isStackedBars) {
-    const relayout = {};
-    const yBounds = computeAxisBounds(host, "y");
-    if (yBounds) {
-      relayout["yaxis.range"] = [yBounds.min, yBounds.max];
-      relayout["yaxis.autorange"] = false;
-    } else {
-      relayout["yaxis.autorange"] = true;
-      relayout["yaxis.range"] = null;
-    }
-
-    if (layout.yaxis2) {
-      const y2Bounds = computeAxisBounds(host, "y2");
-      if (y2Bounds) {
-        relayout["yaxis2.range"] = [y2Bounds.min, y2Bounds.max];
-        relayout["yaxis2.autorange"] = false;
-      } else {
-        relayout["yaxis2.autorange"] = true;
-        relayout["yaxis2.range"] = null;
+  return awaitLayoutSettle()
+    .then(() => awaitLayoutSettle())
+    .then(() => {
+      if (hostUsesCanonicalGroupedBarGeometry(host) && hasCanonicalPlotGeometry(host)) {
+        return applyCanonicalGroupedBarRelayout(host);
       }
-    }
-
-    const stackedRelayout = stableStackedAxisRelayout(host);
-    Object.assign(relayout, stackedRelayout);
-    return Plotly.relayout(host, relayout);
-  }
-
-  const relayout = {
-    "yaxis.autorange": true,
-    "yaxis.range": null,
-  };
-
-  if (layout.yaxis2) {
-    relayout["yaxis2.autorange"] = true;
-    relayout["yaxis2.range"] = null;
-  }
-
-  const stackedRelayout = stableStackedAxisRelayout(host);
-  Object.assign(relayout, stackedRelayout);
-
-  return Plotly.relayout(host, relayout);
+      return applyResponsiveAxisRange(host);
+    });
 }
 
 function stackedUirevisionToken(figureId = "") {
@@ -4195,13 +5173,20 @@ function renderExternalLegend(host, legendHost, figure, section = state.displaye
       const affectedIndices = getAffectedTraceIndices(plotData, item, groupclick);
       const anyVisible = affectedIndices.some((traceIndex) => isTraceVisible(plotData[traceIndex]));
       const nextVisibility = anyVisible ? "legendonly" : true;
-      Plotly.restyle(host, { visible: affectedIndices.map(() => nextVisibility) }, affectedIndices)
-        .then(() => rebuildStackErrorBarOverlays(host))
-        .then(() => rebuildStrictValueErrorBarOverlays(host))
-        .then(() => finishStrictValueErrorBarOverlays(host))
-        .then(() => (figureId === "cloud_distribution" ? syncFogWindHoverTemplate(host) : Promise.resolve()))
-        .then(() => rescaleAfterLegendToggle(host))
-        .then(() => refreshLegendState(host, legendHost, items, groupclick));
+      const isCanonicalGroupedBar = strictGroupedBarOverlayFigureIds.has(figureId);
+
+      const toggleChain = isCanonicalGroupedBar
+        ? applyCanonicalGroupedBarLegendToggle(host, affectedIndices, nextVisibility)
+          .then(() => finishStrictValueErrorBarOverlays(host))
+          .then(() => finalizeGroupedBarLegendToggle(host))
+        : Plotly.restyle(host, { visible: affectedIndices.map(() => nextVisibility) }, affectedIndices)
+          .then(() => rebuildStackErrorBarOverlays(host))
+          .then(() => rebuildStrictValueErrorBarOverlays(host))
+          .then(() => finishStrictValueErrorBarOverlays(host))
+          .then(() => (figureId === "cloud_distribution" ? syncFogWindHoverTemplate(host) : Promise.resolve()))
+          .then(() => rescaleAfterLegendToggle(host));
+
+      toggleChain.then(() => refreshLegendState(host, legendHost, items, groupclick));
     });
 
     legendHost.appendChild(button);
@@ -4240,7 +5225,7 @@ function getChartHeight(section) {
 
 const hostResizeFrames = new Map();
 
-function scheduleHostResize(host) {
+function scheduleHostResize(host, options = {}) {
   if (!host) {
     return Promise.resolve();
   }
@@ -4250,21 +5235,34 @@ function scheduleHostResize(host) {
     cancelAnimationFrame(existingFrame);
   }
 
+  const recalibrateFrame = Boolean(options.recalibrateFrame);
+
   return new Promise((resolve) => {
     const frameId = requestAnimationFrame(() => {
       hostResizeFrames.delete(host);
-      // First pass after DOM/layout updates.
       Promise.resolve(Plotly.Plots.resize(host))
-        .then(() => new Promise((rafResolve) => requestAnimationFrame(() => {
-          // Second pass handles late legend wrapping / font metrics changes.
-          Promise.resolve(Plotly.Plots.resize(host)).finally(rafResolve);
-        })))
-        .then(() => new Promise((timeoutResolve) => {
-          // Final short delayed pass avoids intermittent clipping after section toggles.
-          setTimeout(() => {
-            Promise.resolve(Plotly.Plots.resize(host)).finally(timeoutResolve);
-          }, 60);
-        }))
+        .then(() => {
+          if (hostUsesCanonicalGroupedBarGeometry(host)) {
+            if (recalibrateFrame) {
+              invalidateCanonicalGeometry(host);
+              return calibrateCanonicalPlotGeometry(host)
+                .then(() => applyResponsiveAxisRange(host));
+            }
+            if (hasCanonicalPlotGeometry(host)) {
+              return applyResponsiveAxisRange(host);
+            }
+            return calibrateCanonicalPlotGeometry(host)
+              .then(() => applyResponsiveAxisRange(host));
+          }
+          if (!hostUsesFrequencyAxisLabelLock(host)) {
+            return;
+          }
+          const relayout = stableFrequencyAxisRelayout(host);
+          if (!Object.keys(relayout).length) {
+            return;
+          }
+          return Plotly.relayout(host, relayout);
+        })
         .finally(resolve);
     });
 
@@ -4345,6 +5343,7 @@ async function drawCharts(figures, section = state.displayedSection) {
     applyStrictValueHoverTemplatesToFigure(figure, item.id || "");
     enforceFrequencyMonthAxis(figure, item.id || "");
     enforceHourlyFrequencyAxis(figure, item.id || "");
+    prepareFrequencyFigureGeometry(figure, item.id || "");
     if (isFrequencyFigure || item.id === "fog_cloud_joint") {
       figure.layout.uirevision = stackedUirevisionToken(item.id || "");
     } else if (String(figure.layout.barmode || "").toLowerCase() === "stack") {
@@ -4375,10 +5374,11 @@ async function drawCharts(figures, section = state.displayedSection) {
       responsive: true,
     }).then(() => {
       return applyHostErrorBars(host)
-        .then(() => expandAxesForErrorBars(host))
-        .then(() => {
-          captureStackedAxisLabelLock(host);
-        })
+        .then(() => rebuildStackErrorBarOverlays(host))
+        .then(() => rebuildStrictValueErrorBarOverlays(host))
+        .then(() => finishStrictValueErrorBarOverlays(host))
+        .then(() => calibrateCanonicalPlotGeometry(host))
+        .then(() => applyResponsiveAxisRange(host))
         .then(() => {
       renderExternalLegend(host, legend, item.figure, section, item.id);
       const maybeSync = item.id === "cloud_distribution" ? syncFogWindHoverTemplate(host) : Promise.resolve();
@@ -5013,7 +6013,7 @@ function wireControls() {
       state.showErrorBars = !state.showErrorBars;
       renderErrorBarsToggle();
       if (state.latestFigures.length) {
-        drawCharts(state.latestFigures, state.displayedSection);
+        refreshErrorBarsOnVisibleCharts();
       }
     });
   }
@@ -5082,7 +6082,10 @@ function wireControls() {
                 .then(() => relayoutScatterWindDewptAxes(host));
               return;
             }
-            scheduleHostResize(host);
+            const resizeOptions = strictGroupedBarOverlayFigureIds.has(host.dataset?.figureId || "")
+              ? { recalibrateFrame: true }
+              : {};
+            scheduleHostResize(host, resizeOptions);
           }
         });
       }
