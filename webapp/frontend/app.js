@@ -248,7 +248,7 @@ const state = {
   airportCoverage: null,
   wrMode: "summary", // 'summary' or 'hourly'
   windRoseLayoutRef: {},
-  windRoseTraceVisibility: null,
+  chartLegendVisibility: {},
 };
 
 const liteCache = new Map();
@@ -1404,6 +1404,7 @@ async function renderWindRoseHourFrame(hour, section = state.displayedSection) {
   }
 
   const hourlyWrFig = JSON.parse(JSON.stringify(sourceFigure));
+  resetDefaultLegendTraceVisibility(hourlyWrFig.figure);
   const chartHeight = Number.parseFloat(host.style.height) || getChartHeight(section);
   const layoutSnapshot = state.windRoseLayoutRef[section]
     ? { ...state.windRoseLayoutRef[section], height: chartHeight }
@@ -1417,7 +1418,7 @@ async function renderWindRoseHourFrame(hour, section = state.displayedSection) {
 
   await preparePolarTerrainBackground(hourlyWrFig.figure, icao);
   applyStrictValueHoverTemplatesToFigure(hourlyWrFig.figure, "wind_rose");
-  applyWindRoseVisibilityToFigure(hourlyWrFig.figure, section);
+  applyChartLegendVisibilityToFigure(hourlyWrFig.figure, "wind_rose");
 
   await Plotly.react(host, hourlyWrFig.figure.data || [], hourlyWrFig.figure.layout || {}, {
     displayModeBar: false,
@@ -1487,7 +1488,7 @@ function resetWindRoseModeOnSectionChange(nextSection) {
   }
   stopWindRosePlayback();
   state.wrMode = "summary";
-  clearWindRoseTraceVisibility();
+  clearChartLegendVisibility();
 }
 
 function renderWindRoseToolbar(section = state.displayedSection) {
@@ -5347,8 +5348,8 @@ function renderExternalLegend(host, legendHost, figure, section = state.displaye
           .then(() => rescaleAfterLegendToggle(host));
 
       toggleChain.then(() => {
-        if (figureId === "wind_rose" && shouldPersistWindRoseVisibility(section)) {
-          captureWindRoseVisibilityFromHost(host, section);
+        if (figureId) {
+          captureChartLegendVisibilityFromHost(host, figureId);
         }
         refreshLegendState(host, legendHost, items, groupclick);
       });
@@ -5464,11 +5465,12 @@ function applyChartShellHeights(section = state.displayedSection) {
 }
 
 async function drawCharts(figures, section = state.displayedSection) {
-  state.latestFigures = figures;
+  const renderFigures = figures.map(cloneFigurePayloadForRender);
+  state.latestFigures = renderFigures;
   const isWindSection = section === "wind";
   const isExpandedSection = section === "wind" || section === "precipitation";
   const chartHeight = applyChartShellHeights(section);
-  const visibleFigures = figures.slice(0, 4);
+  const visibleFigures = renderFigures.slice(0, 4);
 
   // Keep maximize controls hidden until all chart renders complete.
 
@@ -5538,9 +5540,7 @@ async function drawCharts(figures, section = state.displayedSection) {
     if (isExpandedSection && !isWindRoseFigure) {
       figure.layout.height = targetChartHeight;
     }
-    if (isWindRoseFigure && shouldPersistWindRoseVisibility(section)) {
-      applyWindRoseVisibilityToFigure(figure, section);
-    }
+    applyChartLegendVisibilityToFigure(figure, item.id);
     return Plotly.react(host, figure.data || [], figure.layout || {}, {
       displayModeBar: false,
       responsive: true,
@@ -5818,35 +5818,45 @@ function shouldUseHourlyWindRose(section = state.requestedSection) {
   return windRoseToolbarSections().has(section) && state.wrMode === "hourly";
 }
 
-function shouldPersistWindRoseVisibility(section = state.displayedSection) {
-  return windRoseToolbarSections().has(section);
+function resetDefaultLegendTraceVisibility(figure) {
+  (figure?.data || []).forEach((trace) => {
+    const name = String(trace?.name || "").trim();
+    if (!name || trace?.showlegend === false) {
+      return;
+    }
+    trace.visible = true;
+  });
 }
 
-function windRoseVisibilityCacheKey(section = state.displayedSection) {
+function cloneFigurePayloadForRender(item) {
+  if (!item?.figure) {
+    return item;
+  }
+  const clone = JSON.parse(JSON.stringify(item));
+  resetDefaultLegendTraceVisibility(clone.figure);
+  return clone;
+}
+
+function chartLegendVisibilityKey(figureId = "") {
   return [
     els.icao?.value || "",
-    section,
+    figureId,
   ].join("::");
 }
 
-function clearWindRoseTraceVisibility() {
-  state.windRoseTraceVisibility = null;
+function clearChartLegendVisibility() {
+  state.chartLegendVisibility = {};
 }
 
-function getStoredWindRoseVisibility(section = state.displayedSection) {
-  if (!shouldPersistWindRoseVisibility(section)) {
+function getStoredChartLegendVisibility(figureId = "") {
+  if (!figureId) {
     return null;
   }
-  const key = windRoseVisibilityCacheKey(section);
-  const stored = state.windRoseTraceVisibility;
-  if (!stored || stored.key !== key || !stored.values) {
-    return null;
-  }
-  return stored.values;
+  return state.chartLegendVisibility[chartLegendVisibilityKey(figureId)] || null;
 }
 
-function captureWindRoseVisibilityFromHost(host, section = state.displayedSection) {
-  if (!shouldPersistWindRoseVisibility(section)) {
+function captureChartLegendVisibilityFromHost(host, figureId = "") {
+  if (!figureId) {
     return;
   }
   const values = {};
@@ -5860,14 +5870,11 @@ function captureWindRoseVisibilityFromHost(host, section = state.displayedSectio
   if (!Object.keys(values).length) {
     return;
   }
-  state.windRoseTraceVisibility = {
-    key: windRoseVisibilityCacheKey(section),
-    values,
-  };
+  state.chartLegendVisibility[chartLegendVisibilityKey(figureId)] = values;
 }
 
-function applyWindRoseVisibilityToFigure(figure, section = state.displayedSection) {
-  const stored = getStoredWindRoseVisibility(section);
+function applyChartLegendVisibilityToFigure(figure, figureId = "") {
+  const stored = getStoredChartLegendVisibility(figureId);
   if (!stored) {
     return;
   }
@@ -6271,7 +6278,7 @@ function wireControls() {
     windRosePlayback.liteHourlyMap = null;
     windRosePlayback.apiHourlyFigures = null;
     windRosePlayback.apiCacheKey = null;
-    clearWindRoseTraceVisibility();
+    clearChartLegendVisibility();
     clearChartAxisLocks();
     if (els.infoOverlay && !els.infoOverlay.classList.contains("hidden")) {
       renderInfoModalContent();
