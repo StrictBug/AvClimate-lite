@@ -8,12 +8,15 @@ const sections = [
 
 const infoDataSection = {
   title: "Data sources",
-  bullets: [
-    "METAR/SPECI data acquired from the ADAM database: January 1, 2000 to December 31, 2024.",
-    "GPATS lightning data acquired from the ADAM database: January 1, 2009 to December 31, 2013.",
-    "WZ lightning data acquired from the ADAM database: January 1, 2014 to December 31, 2024.",
-  ],
 };
+
+const infoMetarSourceFallback =
+  "METAR/SPECI data acquired from the ADAM database: January 1, 2000 to December 31, 2024.";
+
+const infoLightningSourceBullets = [
+  "GPATS lightning data acquired from the ADAM database: January 1, 2009 to December 31, 2013.",
+  "WZ lightning data acquired from the ADAM database: January 1, 2014 to December 31, 2024.",
+];
 
 const infoClimateDriverSection = {
   title: "Climate drivers",
@@ -64,15 +67,14 @@ const infoSectionOverview = {
   },
 };
 
-const infoFogRule = [
-  "Explicit fog present-weather code",
-  "Or inferred: spread < 2 °C, 10-min precip < 0.2 mm, visibility < 1.0 km",
-];
+const infoFogRule =
+  "Fog included in present weather code OR visibility < 1000 m and T−Td < 2 °C and precipitation < 0.2 mm";
 
-const infoLowCloudBins = "Broken/overcast ceiling bins: 2000–1500, 1500–1000, 1000–500, <500 ft";
+const infoLowCloudBins =
+  "Broken or overcast coverage within respective height bins";
 
 const infoRainDayRule =
-  "Rain/drizzle/shower/thunder present-weather, or daily precip (09:00 UTC) > 0.2 mm";
+  "Rain/drizzle/shower/thunder present-weather, or daily precipitation > 0.2 mm";
 
 const infoThunderDayRule = "≥1 lightning strike within 8 km of aerodrome (from 2009)";
 
@@ -90,7 +92,7 @@ const infoFigureDetails = {
   },
   rain_thunder: {
     title: "Rain/Thunder by Month",
-    description: "Monthly percentage of rain days and thunderstorm days.",
+    description: "Average monthly rain days and thunderstorm days.",
     classification: [
       { term: "Rain day", detail: infoRainDayRule },
       { term: "Thunder day", detail: infoThunderDayRule },
@@ -98,7 +100,7 @@ const infoFigureDetails = {
   },
   temp_dewpoint: {
     title: "Temperature & Dewpoint",
-    description: "Monthly climatological maximum and minimum air temperature and dewpoint.",
+    description: "Monthly maximum and minimum air temperature and dewpoint and average monthly precipitation.",
     classification: [
       { term: "Source", detail: "METAR/SPECI air temperature and dewpoint" },
       { term: "Aggregation", detail: "Monthly means from filtered observations" },
@@ -107,72 +109,80 @@ const infoFigureDetails = {
   },
   fog_low_cloud: {
     title: "Fog/Low Cloud Frequency",
-    description: "Monthly frequency of fog and low-cloud ceiling-height categories.",
+    description: "Monthly frequency of fog and low-cloud.",
     classification: [
       { term: "Fog", detail: infoFogRule },
       { term: "Low cloud", detail: infoLowCloudBins },
-      { term: "Denominator", detail: "All, rain, or non-rain days (filter)" },
     ],
   },
   gale_weather_split: {
-    title: "Gale Weather Split",
+    title: "Gale Weather",
     description: "Monthly gale frequency split by associated weather type.",
     classification: [
-      { term: "Gale", detail: "Sustained > 17.49 m/s (34 kt) or gust > 21.09 m/s (41 kt)" },
+      { term: "Gale", detail: "10-minute mean wind > 34 kt or gusts > 41 kt" },
       { term: "With thunder", detail: "Lightning within 8 km ±10 min of observation" },
-      { term: "With shower/rain", detail: "Shower+rain code or 10-min precip > 0.2 mm" },
-      { term: "Otherwise", detail: "No significant weather" },
+      { term: "With shower/rain", detail: "Shower and/or rain code or 10-min precip > 0.2 mm" },
     ],
   },
   monthly_precip: {
-    title: "Monthly Precipitation Occurrence",
-    description: "Monthly rain-day and thunderstorm-day climatology.",
+    title: "Monthly Precipitation",
+    description: "Average monthly rain days and thunderstorm days.",
     classification: [
       { term: "Rain day", detail: infoRainDayRule },
       { term: "Thunder day", detail: infoThunderDayRule },
     ],
   },
   precip_split: {
-    title: "Directional Precipitation Split",
-    description: "Polar view of precipitation intensity contribution by wind-direction sector.",
+    title: "Directional Precipitation",
+    description: "Conditional probability of visibility reductions in precipitation given surface wind direction.",
     classification: [
-      { term: "Grouping", detail: "Wind-direction sector × precipitation-intensity bucket" },
-      { term: "Display", detail: "Relative intensity mix per sector (normalized stack)" },
+      {
+        term: "Grouping",
+        detail:
+          "Wind direction × visibility reduction when either rain, drizzle, or thunderstorms are mentioned in the present weather group or the 10-minute precipitation > 0.2 mm",
+      },
     ],
   },
   monthly_fog: {
     title: "Monthly Fog/Low Cloud Frequency",
-    description: "Monthly stacked frequencies for fog and cloud-base threshold categories.",
+    description: "Monthly frequency of fog and low-cloud.",
     classification: [
       { term: "Fog", detail: infoFogRule },
       { term: "Low cloud", detail: infoLowCloudBins },
-      { term: "Denominator", detail: "All, rain, or non-rain days (filter)" },
     ],
   },
   fog_share: {
-    title: "Hourly Fog/Low Cloud Share",
-    description: "Time-of-day distribution of fog and low-cloud occurrences.",
-    classification: [
-      { term: "Rules", detail: "Same fog and low-cloud logic as monthly chart" },
-      { term: "Aggregation", detail: "Matched observations by hour of day (UTC)" },
-    ],
-  },
-  cloud_distribution: {
-    title: "Cloud Distribution vs Wind",
-    description: "Low-cloud frequency relative to wind direction and wind-speed class.",
-    classification: [
-      { term: "Low cloud", detail: "Broken/overcast below 2000 ft — bins at 2000, 1500, 1000, 500 ft" },
-      { term: "Fog", detail: "Standard fog rule (see monthly fog chart)" },
-      { term: "Grouping", detail: "Wind-direction sector × sustained wind-speed class" },
-    ],
-  },
-  fog_cloud_joint: {
-    title: "Fog/Cloud Joint Conditions",
-    description: "Fog and low-cloud occurrence related to temperature–dewpoint spread.",
+    title: "Hourly Fog/Low Cloud Frequency",
+    description: "Hourly frequency of fog and low-cloud.",
     classification: [
       { term: "Fog", detail: infoFogRule },
       { term: "Low cloud", detail: infoLowCloudBins },
-      { term: "X-axis", detail: "Temperature–dewpoint spread bands" },
+    ],
+  },
+  cloud_distribution: {
+    title: "Wind vs Cloud Distribution",
+    description: "Relative frequency of fog and low cloud with respect to 10m wind.",
+    classification: [
+      { term: "Fog", detail: infoFogRule },
+      { term: "Low cloud", detail: infoLowCloudBins },
+      {
+        term: "Contour value",
+        detail: "Relative frequency of phenomena with respect to observed 10 m wind.",
+      },
+    ],
+  },
+  fog_cloud_joint: {
+    title: "Fog/Cloud Dewpoint",
+    description: "Monthly average dewpoint at time of observation.",
+    classification: [
+      {
+        term: "Fog",
+        detail: `Dewpoint at time of fog observation — ${infoFogRule}`,
+      },
+      {
+        term: "Low cloud",
+        detail: `Dewpoint at time of low cloud observation — ${infoLowCloudBins}`,
+      },
     ],
   },
   monthly_smoke: {
@@ -185,7 +195,7 @@ const infoFigureDetails = {
   },
   hourly_smoke: {
     title: "Hourly Smoke/Dust Frequency",
-    description: "Hour-of-day frequency profile for smoke and dust phenomena.",
+    description: "Hourly frequency of smoke and dust phenomena.",
     classification: [
       { term: "Events", detail: infoSmokeDustRule },
       { term: "Aggregation", detail: "By hour of day (UTC)" },
@@ -195,18 +205,19 @@ const infoFigureDetails = {
     title: "Wind Speed vs Dewpoint Spread",
     description: "Scatter of wind speed against dewpoint for smoke and dust events.",
     classification: [
-      { term: "Filter", detail: infoSmokeDustRule },
-      { term: "Axes", detail: "Wind speed (kt) vs dewpoint (°C)" },
-      { term: "Error bars", detail: "±1 SD around least-squares fit per phenomenon" },
+      { term: "Events", detail: "Smoke, dust, sand, or volcanic ash present weather" },
+      { term: "Plotted values", detail: "Wind speed and dew point at time of observation" },
     ],
   },
   radial_scatter_dust: {
-    title: "Directional Smoke/Dust Relative Frequency",
-    description: "Polar-frequency view of smoke and dust by wind direction and speed.",
+    title: "Wind vs Phenomena Distribution",
+    description: "Relative frequency of phenomena with respect to 10m wind.",
     classification: [
-      { term: "Events", detail: infoSmokeDustRule },
-      { term: "Grouping", detail: "Wind-direction sector × wind-speed class" },
-      { term: "Display", detail: "Relative frequency (polar)" },
+      { term: "Events", detail: "Smoke, dust, sand, or volcanic ash present weather" },
+      {
+        term: "Contour value",
+        detail: "Relative frequency of phenomena with respect to observed 10 m wind",
+      },
     ],
   },
 };
@@ -234,8 +245,10 @@ const state = {
   stackedAxisLabelLocks: {},
   liteMode: false,
   manifest: null,
+  airportCoverage: null,
   wrMode: "summary", // 'summary' or 'hourly'
   windRoseLayoutRef: {},
+  windRoseTraceVisibility: null,
 };
 
 const liteCache = new Map();
@@ -255,6 +268,77 @@ async function checkLiteMode() {
     console.warn("Lite manifest not available:", error);
   }
   return false;
+}
+
+async function loadAirportCoverage() {
+  try {
+    const res = await fetch("data-lite/airport-coverage.json");
+    if (!res.ok) {
+      return null;
+    }
+    const payload = await res.json();
+    const airports = payload?.airports;
+    if (!airports || typeof airports !== "object") {
+      return null;
+    }
+    state.airportCoverage = airports;
+    return airports;
+  } catch (error) {
+    console.warn("Airport coverage metadata not available:", error);
+    return null;
+  }
+}
+
+function formatCoverageDate(isoDate) {
+  const value = String(isoDate || "").trim();
+  if (!value) {
+    return "";
+  }
+  const parts = value.split("-").map((part) => Number(part));
+  if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) {
+    return value;
+  }
+  const [year, month, day] = parts;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+function formatCoveragePercent(pct) {
+  const value = Number(pct);
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+  if (Math.abs(value - Math.round(value)) < 0.05) {
+    return `${Math.round(value)}%`;
+  }
+  return `${value.toFixed(1)}%`;
+}
+
+function metarSourceBullet(icao) {
+  const code = String(icao || "").trim().toUpperCase();
+  const coverage = state.airportCoverage?.[code];
+  const startDate = formatCoverageDate(coverage?.metarStart);
+  const endDate = formatCoverageDate(coverage?.metarEnd);
+  if (!startDate || !endDate) {
+    return infoMetarSourceFallback;
+  }
+  const pctLabel = formatCoveragePercent(coverage?.metarCoveragePct);
+  if (!pctLabel) {
+    return `METAR/SPECI acquired from the ADAM database: ${startDate} to ${endDate}.`;
+  }
+  return `METAR/SPECI acquired from the ADAM database: ${startDate} to ${endDate} (${pctLabel} hourly coverage).`;
+}
+
+function buildInfoDataBullets(icao) {
+  return [metarSourceBullet(icao), ...infoLightningSourceBullets];
 }
 
 function formatLiteDataError(icao, section, season) {
@@ -503,7 +587,11 @@ async function refreshLiteModeFigures(modeKey) {
     hideLoading();
   } catch (error) {
     console.error(error);
-    setStatus(`Error: ${error.message}`);
+    if (!isBenignChartRenderError(error)) {
+      setStatus(`Error: ${error.message}`);
+    } else {
+      setStatus("");
+    }
     hideLoading();
   }
 }
@@ -929,7 +1017,7 @@ function renderInfoModalContent() {
 
   const dataPanel = document.createElement("section");
   dataPanel.className = "info-panel info-panel-data";
-  appendInfoSection(dataPanel, infoDataSection.title, infoDataSection.bullets);
+  appendInfoSection(dataPanel, infoDataSection.title, buildInfoDataBullets(els.icao?.value || ""));
   if (!state.liteMode) {
     appendInfoSubsection(dataPanel, infoClimateDriverSection.title, infoClimateDriverSection.bullets);
   }
@@ -979,6 +1067,23 @@ let loadingTimer = null;
 
 function setStatus(message = "") {
   els.status.textContent = message;
+}
+
+function isBenignChartRenderError(error) {
+  const message = String(error?.message || error || "");
+  if (!message) {
+    return false;
+  }
+  return /_inputDomain|plotly|no valid inputs|not compatible with plot/i.test(message);
+}
+
+function logChartRenderWarning(figureId, error) {
+  const label = figureId || "chart";
+  if (isBenignChartRenderError(error)) {
+    console.warn(`Skipped post-render adjustments for ${label} due to sparse or missing data.`);
+    return;
+  }
+  console.warn(`Chart render issue for ${label}:`, error);
 }
 
 function setLoadingState(progress, message) {
@@ -1312,6 +1417,7 @@ async function renderWindRoseHourFrame(hour, section = state.displayedSection) {
 
   await preparePolarTerrainBackground(hourlyWrFig.figure, icao);
   applyStrictValueHoverTemplatesToFigure(hourlyWrFig.figure, "wind_rose");
+  applyWindRoseVisibilityToFigure(hourlyWrFig.figure, section);
 
   await Plotly.react(host, hourlyWrFig.figure.data || [], hourlyWrFig.figure.layout || {}, {
     displayModeBar: false,
@@ -1381,6 +1487,7 @@ function resetWindRoseModeOnSectionChange(nextSection) {
   }
   stopWindRosePlayback();
   state.wrMode = "summary";
+  clearWindRoseTraceVisibility();
 }
 
 function renderWindRoseToolbar(section = state.displayedSection) {
@@ -5239,7 +5346,12 @@ function renderExternalLegend(host, legendHost, figure, section = state.displaye
           .then(() => (figureId === "cloud_distribution" ? syncFogWindHoverTemplate(host) : Promise.resolve()))
           .then(() => rescaleAfterLegendToggle(host));
 
-      toggleChain.then(() => refreshLegendState(host, legendHost, items, groupclick));
+      toggleChain.then(() => {
+        if (figureId === "wind_rose" && shouldPersistWindRoseVisibility(section)) {
+          captureWindRoseVisibilityFromHost(host, section);
+        }
+        refreshLegendState(host, legendHost, items, groupclick);
+      });
     });
 
     legendHost.appendChild(button);
@@ -5426,6 +5538,9 @@ async function drawCharts(figures, section = state.displayedSection) {
     if (isExpandedSection && !isWindRoseFigure) {
       figure.layout.height = targetChartHeight;
     }
+    if (isWindRoseFigure && shouldPersistWindRoseVisibility(section)) {
+      applyWindRoseVisibilityToFigure(figure, section);
+    }
     return Plotly.react(host, figure.data || [], figure.layout || {}, {
       displayModeBar: false,
       responsive: true,
@@ -5451,7 +5566,11 @@ async function drawCharts(figures, section = state.displayedSection) {
         return scheduleHostResize(host);
       });
       });
+    }).catch((error) => {
+      logChartRenderWarning(item.id, error);
     });
+    }).catch((error) => {
+      logChartRenderWarning(item.id, error);
     });
   });
 
@@ -5699,6 +5818,68 @@ function shouldUseHourlyWindRose(section = state.requestedSection) {
   return windRoseToolbarSections().has(section) && state.wrMode === "hourly";
 }
 
+function shouldPersistWindRoseVisibility(section = state.displayedSection) {
+  return windRoseToolbarSections().has(section);
+}
+
+function windRoseVisibilityCacheKey(section = state.displayedSection) {
+  return [
+    els.icao?.value || "",
+    section,
+  ].join("::");
+}
+
+function clearWindRoseTraceVisibility() {
+  state.windRoseTraceVisibility = null;
+}
+
+function getStoredWindRoseVisibility(section = state.displayedSection) {
+  if (!shouldPersistWindRoseVisibility(section)) {
+    return null;
+  }
+  const key = windRoseVisibilityCacheKey(section);
+  const stored = state.windRoseTraceVisibility;
+  if (!stored || stored.key !== key || !stored.values) {
+    return null;
+  }
+  return stored.values;
+}
+
+function captureWindRoseVisibilityFromHost(host, section = state.displayedSection) {
+  if (!shouldPersistWindRoseVisibility(section)) {
+    return;
+  }
+  const values = {};
+  (host?.data || []).forEach((trace) => {
+    const name = String(trace?.name || "").trim();
+    if (!name) {
+      return;
+    }
+    values[name] = trace.visible ?? true;
+  });
+  if (!Object.keys(values).length) {
+    return;
+  }
+  state.windRoseTraceVisibility = {
+    key: windRoseVisibilityCacheKey(section),
+    values,
+  };
+}
+
+function applyWindRoseVisibilityToFigure(figure, section = state.displayedSection) {
+  const stored = getStoredWindRoseVisibility(section);
+  if (!stored) {
+    return;
+  }
+  (figure?.data || []).forEach((trace) => {
+    const name = String(trace?.name || "").trim();
+    if (!name || !Object.hasOwn(stored, name)) {
+      return;
+    }
+    trace.visible = stored[name];
+  });
+}
+
 function applyWindRoseHourParams(params, figureIds) {
   if (!figureIds.includes("wind_rose") || !shouldUseHourlyWindRose()) {
     return params;
@@ -5857,10 +6038,11 @@ async function fetchChartsLite() {
     if (!data?.figures?.length) {
       const manifestAirports = liteManifestAirports();
       const inManifest = manifestAirports.includes(String(icao || "").trim().toUpperCase());
-      const error = inManifest
-        ? formatLiteDataError(icao, section, season)
-        : `Airport ${icao} is not in the lite manifest.`;
-      data = { figures: [], metrics: {}, error };
+      if (!inManifest) {
+        data = { figures: [], metrics: {}, error: `Airport ${icao} is not in the lite manifest.` };
+      } else {
+        data = { figures: [], metrics: {} };
+      }
     }
 
     if (shouldUseHourlyWindRose(section)) {
@@ -5875,10 +6057,15 @@ async function fetchChartsLite() {
     applySectionLayout();
     await drawCharts(data.figures || [], section);
     renderMetrics(data.metrics || {}, section);
+    setStatus("");
     hideLoading();
   } catch (e) {
     console.error(e);
-    setStatus(`Error: ${e.message}`);
+    if (!isBenignChartRenderError(e)) {
+      setStatus(`Error: ${e.message}`);
+    } else {
+      setStatus("");
+    }
     hideLoading();
   }
 }
@@ -6011,8 +6198,12 @@ async function fetchCharts() {
     renderMetrics(data.metrics, requestedSection);
   } catch (err) {
     if (err.name !== "AbortError") {
-      if (err?.message) {
+      if (err?.message && !isBenignChartRenderError(err)) {
         setStatus(err.message);
+        return;
+      }
+      if (isBenignChartRenderError(err)) {
+        setStatus("");
         return;
       }
       if (window.location.hostname.endsWith("github.io") && !API_BASE) {
@@ -6080,7 +6271,11 @@ function wireControls() {
     windRosePlayback.liteHourlyMap = null;
     windRosePlayback.apiHourlyFigures = null;
     windRosePlayback.apiCacheKey = null;
+    clearWindRoseTraceVisibility();
     clearChartAxisLocks();
+    if (els.infoOverlay && !els.infoOverlay.classList.contains("hidden")) {
+      renderInfoModalContent();
+    }
     fetchCharts();
   });
   els.season.addEventListener("change", refreshSeasonSelection);
@@ -6154,6 +6349,7 @@ function wireControls() {
 async function init() {
   try {
     const isLite = await checkLiteMode();
+    await loadAirportCoverage();
     if (isLite) {
         // In lite mode, we skip fetchOptions and use the manifest.
         // Initialize minimal options so month slider labels work correctly.

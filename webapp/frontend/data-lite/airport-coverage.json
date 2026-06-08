@@ -1,0 +1,1066 @@
+{
+  "airports": {
+    "DEFB": {
+      "metarCoveragePct": 93.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2023-02-07"
+    },
+    "YABA": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YAMB": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YANG": {
+      "metarCoveragePct": 96.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2015-08-19"
+    },
+    "YARG": {
+      "metarCoveragePct": 98.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YARM": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YAYE": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBAF": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBAS": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBBN": {
+      "metarCoveragePct": 99.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBCG": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBCS": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBCV": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBDG": {
+      "metarCoveragePct": 99.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBDV": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-07-24"
+    },
+    "YBGD": {
+      "metarCoveragePct": 97.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2014-10-21"
+    },
+    "YBHI": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBHM": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2002-07-19"
+    },
+    "YBKE": {
+      "metarCoveragePct": 98.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBKT": {
+      "metarCoveragePct": 98.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2001-10-10"
+    },
+    "YBLN": {
+      "metarCoveragePct": 98.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBLT": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-07-24"
+    },
+    "YBMA": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBMK": {
+      "metarCoveragePct": 98.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBNA": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBNS": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBOK": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBPN": {
+      "metarCoveragePct": 98.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBRK": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBRM": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBRY": {
+      "metarCoveragePct": 98.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2013-12-04"
+    },
+    "YBSU": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBTH": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBTI": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBTL": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBUD": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBUN": {
+      "metarCoveragePct": 98.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2018-04-18"
+    },
+    "YBWP": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YBWW": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2014-10-22"
+    },
+    "YBWX": {
+      "metarCoveragePct": 98.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YCAR": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YCBA": {
+      "metarCoveragePct": 98.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YCBB": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2001-07-02"
+    },
+    "YCBP": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YCCY": {
+      "metarCoveragePct": 98.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2001-03-23"
+    },
+    "YCDU": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YCFS": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2013-08-09"
+    },
+    "YCHK": {
+      "metarCoveragePct": 97.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2013-06-17"
+    },
+    "YCIN": {
+      "metarCoveragePct": 98.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YCKN": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-07-24"
+    },
+    "YCMT": {
+      "metarCoveragePct": 99.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2010-04-15"
+    },
+    "YCOE": {
+      "metarCoveragePct": 98.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2002-03-28"
+    },
+    "YCOM": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YCUN": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YCWA": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2013-12-04"
+    },
+    "YDBY": {
+      "metarCoveragePct": 98.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YDPO": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YELD": {
+      "metarCoveragePct": 60.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-07-27"
+    },
+    "YEML": {
+      "metarCoveragePct": 99.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YERN": {
+      "metarCoveragePct": 92.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-06"
+    },
+    "YEST": {
+      "metarCoveragePct": 99.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YEWA": {
+      "metarCoveragePct": 98.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2020-08-31"
+    },
+    "YFDF": {
+      "metarCoveragePct": 97.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2013-06-16"
+    },
+    "YFLI": {
+      "metarCoveragePct": 99.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YFRT": {
+      "metarCoveragePct": 98.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YFTZ": {
+      "metarCoveragePct": 98.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YGEL": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YGFN": {
+      "metarCoveragePct": 99.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2006-04-07"
+    },
+    "YGGE": {
+      "metarCoveragePct": 99.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2020-11-16"
+    },
+    "YGLA": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YGLB": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YGLI": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YGLS": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YGTE": {
+      "metarCoveragePct": 97.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-07-24"
+    },
+    "YGTH": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-06-13"
+    },
+    "YGTN": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2004-06-01"
+    },
+    "YHBA": {
+      "metarCoveragePct": 99.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YHID": {
+      "metarCoveragePct": 98.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YHLC": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2015-09-18"
+    },
+    "YHML": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YHOO": {
+      "metarCoveragePct": 98.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-07-24"
+    },
+    "YHSM": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YHUG": {
+      "metarCoveragePct": 98.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2001-02-23"
+    },
+    "YIBO": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2021-05-26"
+    },
+    "YIFL": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2016-06-21"
+    },
+    "YIVO": {
+      "metarCoveragePct": 97.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-07-24"
+    },
+    "YJAB": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YJLC": {
+      "metarCoveragePct": 97.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2001-08-31"
+    },
+    "YKDD": {
+      "metarCoveragePct": 99.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2021-02-08"
+    },
+    "YKII": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YKLC": {
+      "metarCoveragePct": 99.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2020-11-10"
+    },
+    "YKOW": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YKRY": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2001-01-19"
+    },
+    "YKSC": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YLBD": {
+      "metarCoveragePct": 97.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2010-02-15"
+    },
+    "YLEC": {
+      "metarCoveragePct": 99.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YLEO": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2007-02-26"
+    },
+    "YLHI": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YLHR": {
+      "metarCoveragePct": 97.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2001-06-26"
+    },
+    "YLIS": {
+      "metarCoveragePct": 97.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2002-02-21"
+    },
+    "YLLE": {
+      "metarCoveragePct": 99.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2002-08-15"
+    },
+    "YLRE": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YLST": {
+      "metarCoveragePct": 98.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YLTV": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMAV": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMAY": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMBA": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-07-24"
+    },
+    "YMBD": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2006-03-02"
+    },
+    "YMDG": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMEK": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMEN": {
+      "metarCoveragePct": 87.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-26"
+    },
+    "YMER": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMES": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2017-10-02"
+    },
+    "YMGD": {
+      "metarCoveragePct": 98.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2003-10-24"
+    },
+    "YMHB": {
+      "metarCoveragePct": 99.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMHU": {
+      "metarCoveragePct": 97.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2003-08-14"
+    },
+    "YMIA": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMLT": {
+      "metarCoveragePct": 99.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMMB": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMML": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMND": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2016-07-11"
+    },
+    "YMNG": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMOG": {
+      "metarCoveragePct": 97.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMOR": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMRB": {
+      "metarCoveragePct": 99.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2012-02-26"
+    },
+    "YMRY": {
+      "metarCoveragePct": 98.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMTG": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YMTI": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2013-10-23"
+    },
+    "YMYB": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2007-12-19"
+    },
+    "YNAR": {
+      "metarCoveragePct": 98.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2007-03-12"
+    },
+    "YNBR": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2001-07-13"
+    },
+    "YNGU": {
+      "metarCoveragePct": 98.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2012-07-02"
+    },
+    "YNRC": {
+      "metarCoveragePct": 99.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YNTN": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2001-04-09"
+    },
+    "YNWN": {
+      "metarCoveragePct": 98.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YOLD": {
+      "metarCoveragePct": 99.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YOLW": {
+      "metarCoveragePct": 98.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YOOM": {
+      "metarCoveragePct": 99.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YORG": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPAD": {
+      "metarCoveragePct": 99.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPAG": {
+      "metarCoveragePct": 98.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2001-07-02"
+    },
+    "YPBO": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPCC": {
+      "metarCoveragePct": 98.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPDN": {
+      "metarCoveragePct": 99.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPEA": {
+      "metarCoveragePct": 99.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPED": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPGV": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPJT": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPKA": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPKG": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPKS": {
+      "metarCoveragePct": 98.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPKT": {
+      "metarCoveragePct": 94.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-08-30"
+    },
+    "YPKU": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPLC": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPLM": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPMQ": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPOD": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPPD": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPPF": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPPH": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPTN": {
+      "metarCoveragePct": 99.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPWR": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YPXM": {
+      "metarCoveragePct": 98.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YREN": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YRMD": {
+      "metarCoveragePct": 98.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YROM": {
+      "metarCoveragePct": 98.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSBK": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSCB": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSCN": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSCO": {
+      "metarCoveragePct": 99.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSCR": {
+      "metarCoveragePct": 99.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSDU": {
+      "metarCoveragePct": 99.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSGE": {
+      "metarCoveragePct": 98.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-02"
+    },
+    "YSHK": {
+      "metarCoveragePct": 99.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-05-31"
+    },
+    "YSHL": {
+      "metarCoveragePct": 98.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSHT": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSHW": {
+      "metarCoveragePct": 100.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2012-08-31"
+    },
+    "YSNF": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSNW": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-11-28"
+    },
+    "YSOL": {
+      "metarCoveragePct": 98.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2015-09-29"
+    },
+    "YSRI": {
+      "metarCoveragePct": 99.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSRN": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSSY": {
+      "metarCoveragePct": 99.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSTH": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2001-01-10"
+    },
+    "YSTW": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSWG": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YSWH": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YTEE": {
+      "metarCoveragePct": 97.3,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2001-08-19"
+    },
+    "YTEF": {
+      "metarCoveragePct": 97.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YTEM": {
+      "metarCoveragePct": 99.2,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2005-01-31"
+    },
+    "YTGM": {
+      "metarCoveragePct": 98.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-09"
+    },
+    "YTGT": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2023-12-06"
+    },
+    "YTMO": {
+      "metarCoveragePct": 97.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-12-14"
+    },
+    "YTNG": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2009-10-01"
+    },
+    "YTNK": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-07-24"
+    },
+    "YTRA": {
+      "metarCoveragePct": 96.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2016-12-08"
+    },
+    "YTRE": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YTST": {
+      "metarCoveragePct": 96.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2004-05-13"
+    },
+    "YTWB": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YWBL": {
+      "metarCoveragePct": 99.7,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YWBR": {
+      "metarCoveragePct": 98.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YWDH": {
+      "metarCoveragePct": 99.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2016-08-18"
+    },
+    "YWGT": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YWHA": {
+      "metarCoveragePct": 99.6,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YWLG": {
+      "metarCoveragePct": 99.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YWLM": {
+      "metarCoveragePct": 99.8,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YWLU": {
+      "metarCoveragePct": 99.9,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2017-11-03"
+    },
+    "YWMO": {
+      "metarCoveragePct": 95.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2024-08-14"
+    },
+    "YWTN": {
+      "metarCoveragePct": 99.1,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2002-10-17"
+    },
+    "YWYY": {
+      "metarCoveragePct": 99.5,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    },
+    "YYND": {
+      "metarCoveragePct": 50.4,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2002-01-20"
+    },
+    "YYNG": {
+      "metarCoveragePct": 99.0,
+      "metarEnd": "2024-12-31",
+      "metarStart": "2000-01-01"
+    }
+  },
+  "generatedAt": "2026-06-08",
+  "version": 3
+}
