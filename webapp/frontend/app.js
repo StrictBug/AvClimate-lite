@@ -270,6 +270,9 @@ const state = {
   wrMode: "summary", // 'summary' or 'hourly'
   lhMode: "summary", // 'summary' or 'hourly' (lightning heatmap)
   windRoseLayoutRef: {},
+  windRoseSummaryFigure: {},
+  windRoseHourlyScaleRef: null,
+  windRoseHourlyScaleKey: null,
   lightningHeatmapScaleRef: null,
   lightningHeatmapHourlyScaleRef: null,
   lightningHeatmapHourlyScaleKey: null,
@@ -1392,6 +1395,11 @@ const windRosePlayback = {
   liteHourlyMap: null,
   apiCacheKey: null,
   apiHourlyFigures: null,
+  // Context of the wind-rose figure currently drawn on the host. When it
+  // matches the live host (same icao/season/section/size), hourly scrubbing
+  // updates only the petal data and never rebuilds the layout, so the rings,
+  // grid and terrain background stay perfectly still (no flicker/movement).
+  frameContext: null,
 };
 
 function updateWindRosePlayButton() {
@@ -1520,6 +1528,78 @@ function resolveWindRoseHourFigure(hour, icao, season) {
   return windRosePlayback.apiHourlyFigures?.get(Number(hour)) || null;
 }
 
+// Compute a single radial-axis range that fits every hour (0-23) plus the
+// summary rose, so the polar grid never rescales while scrubbing/toggling.
+function computeWindRoseHourlyScale(section, season) {
+  const icao = els.icao?.value || "";
+  let globalMax = 0;
+  for (let hour = 0; hour < 24; hour += 1) {
+    const sourceFigure = resolveWindRoseHourFigure(String(hour), icao, season);
+    if (sourceFigure?.figure) {
+      globalMax = Math.max(globalMax, windRoseRadialMax(sourceFigure.figure));
+    }
+  }
+  // Fold in the summary rose so summary and hourly share the same scale and
+  // toggling between them does not make the rose jump in size.
+  const summaryMax = Number(state.windRoseLayoutRef[section]?.radialMax);
+  if (Number.isFinite(summaryMax)) {
+    globalMax = Math.max(globalMax, summaryMax);
+  }
+  if (!(globalMax > 0)) {
+    return null;
+  }
+  return windRoseRadialRange(globalMax);
+}
+
+function ensureWindRoseHourlyScale(icao, season, section) {
+  const key = [
+    String(icao || "").trim().toUpperCase(),
+    String(season || "all"),
+    String(section || ""),
+  ].join("::");
+  if (state.windRoseHourlyScaleKey !== key || !state.windRoseHourlyScaleRef) {
+    const range = computeWindRoseHourlyScale(section, season);
+    if (range) {
+      state.windRoseHourlyScaleRef = [...range];
+      state.windRoseHourlyScaleKey = key;
+    }
+  }
+  return state.windRoseHourlyScaleRef;
+}
+
+function resetWindRoseHourlyScale() {
+  state.windRoseHourlyScaleRef = null;
+  state.windRoseHourlyScaleKey = null;
+  windRosePlayback.frameContext = null;
+}
+
+function windRoseFramePinContext(host) {
+  const index = state.latestFigures.findIndex((item) => item.id === "wind_rose");
+  const isMaximized = Number.isInteger(state.maximizedChartIndex) && state.maximizedChartIndex === index;
+  return {
+    icao: String(els.icao?.value || "").trim().toUpperCase(),
+    season: String(els.season?.value || "all"),
+    section: String(state.displayedSection || ""),
+    width: Math.round(host?.offsetWidth || host?.clientWidth || 0),
+    height: Math.round(host?.offsetHeight || host?.clientHeight || 0),
+    maximized: isMaximized,
+  };
+}
+
+function windRoseFrameMatchesContext(host) {
+  const ctx = windRosePlayback.frameContext;
+  if (!ctx || !host?.data?.length) {
+    return false;
+  }
+  const live = windRoseFramePinContext(host);
+  return ctx.icao === live.icao
+    && ctx.season === live.season
+    && ctx.section === live.section
+    && ctx.width === live.width
+    && ctx.height === live.height
+    && ctx.maximized === live.maximized;
+}
+
 async function renderWindRoseHourFrame(hour, section = state.displayedSection) {
   if (!shouldUseHourlyWindRose(section)) {
     return;
@@ -1543,9 +1623,18 @@ async function renderWindRoseHourFrame(hour, section = state.displayedSection) {
   const hourlyWrFig = JSON.parse(JSON.stringify(sourceFigure));
   resetDefaultLegendTraceVisibility(hourlyWrFig.figure);
   const chartHeight = Number.parseFloat(host.style.height) || getChartHeight(section);
-  const layoutSnapshot = state.windRoseLayoutRef[section]
-    ? { ...state.windRoseLayoutRef[section], height: chartHeight }
+
+  // One stable radial range across all 24 hours + summary, so the polar grid
+  // and petals never rescale while scrubbing or toggling modes.
+  const hourlyRange = ensureWindRoseHourlyScale(icao, season, section);
+  const baseSnapshot = state.windRoseLayoutRef[section]
+    ? { ...state.windRoseLayoutRef[section] }
     : null;
+  const layoutSnapshot = {
+    ...(baseSnapshot || {}),
+    height: chartHeight,
+    ...(hourlyRange ? { radialRange: [...hourlyRange] } : {}),
+  };
 
   applyWindRoseLayout(hourlyWrFig.figure, section, layoutSnapshot);
   hourlyWrFig.figure.layout = hourlyWrFig.figure.layout || {};
@@ -1557,19 +1646,140 @@ async function renderWindRoseHourFrame(hour, section = state.displayedSection) {
   applyStrictValueHoverTemplatesToFigure(hourlyWrFig.figure, "wind_rose");
   applyChartLegendVisibilityToFigure(hourlyWrFig.figure, "wind_rose");
 
-  await Plotly.react(host, hourlyWrFig.figure.data || [], hourlyWrFig.figure.layout || {}, {
+  const windRoseIndex = state.latestFigures.findIndex((item) => item.id === "wind_rose");
+
+  // Fast path: the static layer (polar axes, grid, terrain, scale) is already
+  // drawn for this exact context, so only swap the petal data. Nothing in the
+  // layout is touched, which guarantees zero flicker/movement.
+  const srcData = hourlyWrFig.figure.data || [];
+  if (windRoseFrameMatchesContext(host) && host.data.length === srcData.length) {
+    const rArrays = srcData.map((trace) => trace.r);
+    const thetaArrays = srcData.map((trace) => trace.theta);
+    const indices = srcData.map((_, idx) => idx);
+    await Plotly.restyle(host, { r: rArrays, theta: thetaArrays }, indices);
+    if (windRoseIndex >= 0) {
+      state.latestFigures[windRoseIndex] = hourlyWrFig;
+    }
+    return;
+  }
+
+  // Rebuild path (first entry / resize / maximize). Reuse the geometry already
+  // on screen (polar domain, margins, width/height, terrain image) and only
+  // override the radial range, so the plot never resizes -> no blink. The
+  // follow-up resize is therefore unnecessary and is skipped when we reuse it.
+  const liveLayout = host.layout && host.layout.polar ? JSON.parse(JSON.stringify(host.layout)) : null;
+  let renderLayout;
+  if (liveLayout) {
+    renderLayout = liveLayout;
+    renderLayout.polar = renderLayout.polar || {};
+    const range = hourlyRange ? [...hourlyRange] : renderLayout.polar.radialaxis?.range;
+    renderLayout.polar.radialaxis = {
+      ...(renderLayout.polar.radialaxis || {}),
+      autorange: false,
+      ...(range ? { range: [...range] } : {}),
+    };
+    renderLayout.height = chartHeight;
+    renderLayout.showlegend = false;
+  } else {
+    renderLayout = hourlyWrFig.figure.layout || {};
+  }
+
+  await Plotly.react(host, srcData, renderLayout, {
     displayModeBar: false,
     responsive: true,
   });
 
-  const windRoseIndex = state.latestFigures.findIndex((item) => item.id === "wind_rose");
   if (windRoseIndex >= 0) {
     state.latestFigures[windRoseIndex] = hourlyWrFig;
     const { legend } = chartUi[windRoseIndex];
     renderExternalLegend(host, legend, hourlyWrFig.figure, section, "wind_rose");
   }
 
-  await scheduleWindRoseResize(host);
+  if (!liveLayout) {
+    await scheduleWindRoseResize(host);
+  }
+  windRosePlayback.frameContext = windRoseFramePinContext(host);
+}
+
+// Switch the rose to hourly mode by re-rendering only the rose host (no grid
+// re-fetch/redraw), then let scrubbing run on the data-only fast path.
+async function enterWindRoseHourlyInPlace(section = state.displayedSection) {
+  const host = getWindRoseChartHost();
+  if (!host) {
+    fetchCharts();
+    return;
+  }
+  try {
+    await ensureWindRoseHourlyFramesLoaded();
+  } catch (error) {
+    console.warn("Failed to enter hourly wind rose:", error);
+    fetchCharts();
+    return;
+  }
+  resetWindRoseHourlyScale();
+  windRosePlayback.frameContext = null;
+  const hour = els.wrHourScroller?.value ?? "0";
+  await renderWindRoseHourFrame(hour, section);
+}
+
+// Restore the cached summary rose into the existing host without a full redraw.
+async function exitWindRoseHourlyInPlace(section = state.displayedSection) {
+  const host = getWindRoseChartHost();
+  const cached = state.windRoseSummaryFigure?.[section];
+  if (!host || !cached?.figure) {
+    fetchCharts();
+    return;
+  }
+
+  const icao = els.icao.value;
+  const summaryItem = JSON.parse(JSON.stringify(cached));
+  resetDefaultLegendTraceVisibility(summaryItem.figure, "wind_rose");
+  const chartHeight = Number.parseFloat(host.style.height) || getChartHeight(section);
+  applyStrictValueHoverTemplatesToFigure(summaryItem.figure, "wind_rose");
+  applyChartLegendVisibilityToFigure(summaryItem.figure, "wind_rose");
+
+  // Reuse the on-screen geometry so the rose does not resize while restoring
+  // (no blink), but apply the summary's own auto-fitted radial range so it
+  // looks exactly as it did before entering hourly mode.
+  const summaryRange = windRoseRadialRange(windRoseRadialMax(summaryItem.figure));
+  const liveLayout = host.layout && host.layout.polar ? JSON.parse(JSON.stringify(host.layout)) : null;
+  let renderLayout;
+  if (liveLayout) {
+    renderLayout = liveLayout;
+    renderLayout.polar = renderLayout.polar || {};
+    renderLayout.polar.radialaxis = {
+      ...(renderLayout.polar.radialaxis || {}),
+      autorange: false,
+      range: [...summaryRange],
+    };
+    renderLayout.height = chartHeight;
+    renderLayout.showlegend = false;
+  } else {
+    applyWindRoseLayout(summaryItem.figure, section, { height: chartHeight, radialRange: summaryRange });
+    summaryItem.figure.layout = summaryItem.figure.layout || {};
+    summaryItem.figure.layout.height = chartHeight;
+    delete summaryItem.figure.layout.width;
+    summaryItem.figure.layout.showlegend = false;
+    await preparePolarTerrainBackground(summaryItem.figure, icao);
+    renderLayout = summaryItem.figure.layout || {};
+  }
+
+  await Plotly.react(host, summaryItem.figure.data || [], renderLayout, {
+    displayModeBar: false,
+    responsive: true,
+  });
+
+  const windRoseIndex = state.latestFigures.findIndex((item) => item.id === "wind_rose");
+  if (windRoseIndex >= 0) {
+    state.latestFigures[windRoseIndex] = summaryItem;
+    state.windRoseLayoutRef[section] = extractWindRoseLayoutSnapshot(summaryItem.figure, section, chartHeight);
+    const { legend } = chartUi[windRoseIndex];
+    renderExternalLegend(host, legend, summaryItem.figure, section, "wind_rose");
+  }
+  windRosePlayback.frameContext = null;
+  if (!liveLayout) {
+    await scheduleWindRoseResize(host);
+  }
 }
 
 async function advanceWindRosePlaybackFrame() {
@@ -1604,6 +1814,11 @@ async function startWindRosePlayback() {
     return;
   }
 
+  // Recompute the stable scale now that every hour's frame is loaded, so the
+  // fixed radial range fits all hours (e.g. the API path where only the summary
+  // max was known until frames were fetched).
+  resetWindRoseHourlyScale();
+
   windRosePlayback.playing = true;
   updateWindRosePlayButton();
   windRosePlayback.timer = setInterval(() => {
@@ -1625,6 +1840,7 @@ function resetWindRoseModeOnSectionChange(nextSection) {
   }
   stopWindRosePlayback();
   state.wrMode = "summary";
+  resetWindRoseHourlyScale();
   resetLightningHeatmapModeOnSectionChange(nextSection);
   clearChartLegendVisibility();
 }
@@ -1698,10 +1914,16 @@ function attachWindRoseListeners() {
     els.wrModeSummary.addEventListener("click", () => {
       stopWindRosePlayback();
       state.wrMode = "summary";
-      els.wrModeSummary.classList.add("active");
-      els.wrModeHourly.classList.remove("active");
-      els.wrHourScrollerContainer.classList.add("hidden");
-      if (state.displayedSection === "wind" || state.displayedSection === "overview") fetchCharts();
+      // Re-render the toolbar so slider visibility (incl. the wind panel's
+      // is-hidden-state class) tracks the new mode.
+      renderWindRoseToolbar(state.displayedSection);
+      if (state.displayedSection === "wind" || state.displayedSection === "overview") {
+        if (state.liteMode) {
+          exitWindRoseHourlyInPlace();
+        } else {
+          fetchCharts();
+        }
+      }
     });
   }
 
@@ -1709,10 +1931,14 @@ function attachWindRoseListeners() {
     els.wrModeHourly.addEventListener("click", () => {
       stopWindRosePlayback();
       state.wrMode = "hourly";
-      els.wrModeHourly.classList.add("active");
-      els.wrModeSummary.classList.remove("active");
-      els.wrHourScrollerContainer.classList.remove("hidden");
-      if (state.displayedSection === "wind" || state.displayedSection === "overview") fetchCharts();
+      renderWindRoseToolbar(state.displayedSection);
+      if (state.displayedSection === "wind" || state.displayedSection === "overview") {
+        if (state.liteMode) {
+          enterWindRoseHourlyInPlace();
+        } else {
+          fetchCharts();
+        }
+      }
     });
   }
 
@@ -2784,6 +3010,7 @@ function refreshSeasonSelection() {
   stopLightningPlayback();
   windRosePlayback.apiHourlyFigures = null;
   windRosePlayback.apiCacheKey = null;
+  resetWindRoseHourlyScale();
   state.lightningHeatmapScaleRef = null;
   state.lightningHeatmapSummaryLayoutRef = null;
   resetLightningHourlyLayoutState();
@@ -7067,14 +7294,28 @@ async function drawCharts(figures, section = state.displayedSection) {
       applyTopoMapPanelLayout(figure, item.id, { chartHeight: targetChartHeight });
     }
     if (isWindRoseFigure) {
-      const layoutSnapshot = state.wrMode === "hourly" && state.windRoseLayoutRef[section]
-        ? { ...state.windRoseLayoutRef[section], height: targetChartHeight }
-        : null;
+      let layoutSnapshot = null;
+      if (state.wrMode === "hourly" && state.windRoseLayoutRef[section]) {
+        // Use the stable all-hours scale (matches scrub frames) when available,
+        // otherwise fall back to the summary snapshot's range.
+        const hourlyRange = ensureWindRoseHourlyScale(icao, season, section);
+        layoutSnapshot = {
+          ...state.windRoseLayoutRef[section],
+          height: targetChartHeight,
+          ...(hourlyRange ? { radialRange: [...hourlyRange] } : {}),
+        };
+      }
       applyWindRoseLayout(figure, section, layoutSnapshot);
       figure.layout.height = targetChartHeight;
       delete figure.layout.width;
       if (state.wrMode === "summary") {
         state.windRoseLayoutRef[section] = extractWindRoseLayoutSnapshot(figure, section, targetChartHeight);
+        // Cache the summary rose so toggling hourly -> summary can restore it in
+        // place without a full grid re-fetch/redraw.
+        state.windRoseSummaryFigure[section] = JSON.parse(JSON.stringify(item));
+        windRosePlayback.frameContext = null;
+      } else {
+        windRosePlayback.frameContext = windRoseFramePinContext(host);
       }
     }
     return prepareChartTerrainBackground(figure, icao, item.id).then(() => {
@@ -7729,12 +7970,14 @@ function extractWindRoseLayoutSnapshot(figure, section, chartHeight = null) {
   };
 }
 
-function applyWindRoseRadialLayout(figure) {
+function applyWindRoseRadialLayout(figure, fixedRange = null) {
   if (!figure?.layout?.polar) {
     return;
   }
 
-  const radialRange = windRoseRadialRange(windRoseRadialMax(figure));
+  const radialRange = Array.isArray(fixedRange) && fixedRange.length === 2
+    ? [...fixedRange]
+    : windRoseRadialRange(windRoseRadialMax(figure));
   figure.layout.polar = {
     ...(figure.layout.polar || {}),
     radialaxis: {
@@ -7759,7 +8002,7 @@ function applyWindRoseLayout(figure, section, snapshot = null) {
   if (snapshot?.height != null) {
     figure.layout.height = snapshot.height;
   }
-  applyWindRoseRadialLayout(figure);
+  applyWindRoseRadialLayout(figure, snapshot?.radialRange || null);
 }
 
 function isWindRoseChartHost(host) {
@@ -8481,6 +8724,7 @@ function wireControls() {
     windRosePlayback.liteHourlyMap = null;
     windRosePlayback.apiHourlyFigures = null;
     windRosePlayback.apiCacheKey = null;
+    resetWindRoseHourlyScale();
     lightningPlayback.liteHourlyMap = null;
     lightningPlayback.liteHourlyIcao = null;
     resetLightningHourlyLayoutState();
