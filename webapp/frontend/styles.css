@@ -50,7 +50,7 @@ body.lite-mode .lite-only {
 .chart-card-toolbar .lite-control-row {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   gap: 4px; /* Tighter gap */
 }
 
@@ -99,7 +99,7 @@ body.lite-mode .lite-only {
   display: flex;
   align-items: center;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: center;
 }
 
 .chart-card-toolbar .frame-slider-shell {
@@ -146,7 +146,17 @@ body.lite-mode .lite-only {
   gap: 12px;
 }
 
-.wr-hour-play-btn {
+#wr-hour-value,
+#lh-hour-value {
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 1.1em;
+  color: var(--av-blue);
+  min-width: 60px;
+}
+
+.wr-hour-play-btn,
+.hour-play-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -161,34 +171,41 @@ body.lite-mode .lite-only {
   flex-shrink: 0;
 }
 
-.wr-hour-play-btn:hover {
+.wr-hour-play-btn:hover,
+.hour-play-btn:hover {
   background: #f0f5ff;
 }
 
-.wr-hour-play-btn.is-playing {
+.wr-hour-play-btn.is-playing,
+.hour-play-btn.is-playing {
   background: linear-gradient(180deg, #3b6ed8 0%, #2159d1 100%);
   color: #ffffff;
   border-color: #2159d1;
 }
 
-.wr-hour-play-icon-pause {
+.wr-hour-play-icon-pause,
+.hour-play-icon-pause {
   display: none;
 }
 
-.wr-hour-play-btn.is-playing .wr-hour-play-icon-play {
+.wr-hour-play-btn.is-playing .wr-hour-play-icon-play,
+.hour-play-btn.is-playing .hour-play-icon-play {
   display: none;
 }
 
-.wr-hour-play-btn.is-playing .wr-hour-play-icon-pause {
+.wr-hour-play-btn.is-playing .wr-hour-play-icon-pause,
+.hour-play-btn.is-playing .hour-play-icon-pause {
   display: block;
 }
 
-#wr-hour-scroller {
+#wr-hour-scroller,
+#lh-hour-scroller {
   width: 100%;
   cursor: pointer;
 }
 
-#wr-hour-value {
+.chart-card-toolbar #wr-hour-value,
+.chart-card-toolbar #lh-hour-value {
   font-family: monospace;
   font-weight: 700;
   font-size: 1.1em;
@@ -697,6 +714,23 @@ body.lite-mode .lite-only {
   min-height: 0;
   min-width: 0;
   flex: 1 1 auto;
+  position: relative;
+}
+
+/* Transparent overlay that holds only the lightning heatmap cells during hourly
+   playback. It sits exactly over the base chart so the base (topo, rings, axes,
+   colorbar) is never restyled and cannot jitter while scrubbing. */
+.lightning-hour-overlay {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  background: transparent;
+  z-index: 3;
+}
+
+.lightning-hour-overlay.is-visible {
+  display: block;
+  pointer-events: auto;
 }
 
 .chart-shell.no-legend .chart {
@@ -752,14 +786,15 @@ body.lite-mode .lite-only {
   position: relative;
   display: inline-flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   width: max-content;
 }
 
 .chart-card-toolbar.is-wind-toolbar #wr-hour-scroller-container {
   position: absolute;
   top: calc(100% + 4px);
-  right: 0;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   visibility: hidden;
   opacity: 0;
@@ -769,6 +804,33 @@ body.lite-mode .lite-only {
 }
 
 .chart-card-toolbar.is-wind-toolbar.is-hourly-mode #wr-hour-scroller-container {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.chart-card-toolbar.is-lightning-toolbar .lite-control-row {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+}
+
+.chart-card-toolbar.is-lightning-toolbar #lh-hour-scroller-container {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  width: max-content;
+  margin: 0;
+}
+
+.chart-card-toolbar.is-lightning-toolbar.is-hourly-mode #lh-hour-scroller-container {
   visibility: visible;
   opacity: 1;
   pointer-events: auto;

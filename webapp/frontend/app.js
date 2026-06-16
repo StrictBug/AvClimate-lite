@@ -55,7 +55,7 @@ const infoSectionOverview = {
   },
   precipitation: {
     title: "Precipitation",
-    figureOrder: ["monthly_precip", "precip_split"],
+    figureOrder: ["monthly_precip", "precip_split", "hourly_precip", "lightning_heatmap"],
   },
   fog_low_cloud: {
     title: "Fog/Low cloud",
@@ -75,6 +75,13 @@ const infoLowCloudBins =
 
 const infoRainDayRule =
   "Rain/drizzle/shower/thunder present-weather, or daily precipitation > 0.2 mm";
+
+
+const infoHourlyPrecipRainRule =
+  "10-minute precipitation > 0.2 mm";
+
+const infoPrecipSplitRule =
+  "10-minute precipitation > 0.2 mm, or rain/shower/thunder present weather";
 
 const infoThunderDayRule = "≥1 lightning strike within 8 km of aerodrome (from 2009)";
 
@@ -138,9 +145,26 @@ const infoFigureDetails = {
     classification: [
       {
         term: "Grouping",
-        detail:
-          "Wind direction × visibility reduction when either rain, drizzle, or thunderstorms are mentioned in the present weather group or the 10-minute precipitation > 0.2 mm",
+        detail: infoPrecipSplitRule,
       },
+    ],
+  },
+  hourly_precip: {
+    title: "Hourly Rain Observations",
+    description: "Precipitating observation counts by UTC hour on the primary axis; thunderstorm hours on the secondary axis.",
+    classification: [
+      { term: "Precipitation", detail: infoHourlyPrecipRainRule },
+      { term: "Thunderstorm", detail: "Unique UTC hours per BoM year with at least one strike within 8 km, averaged by UTC hour (from 2009); secondary axis" },
+      { term: "Aggregation", detail: "Observation counts by UTC hour; average per hour across years" },
+    ],
+  },
+  lightning_heatmap: {
+    title: "Lightning Strike Frequency",
+    description: "Strike counts within a 30 km radius of the aerodrome, with 8 km and 16 km range rings, over the same terrain background as radial plots.",
+    classification: [
+      { term: "Coverage", detail: infoThunderDayRule },
+      { term: "Grid", detail: "48×48 cells (~1.25 km) over a 60 km square aligned to the 30 km strike radius" },
+      { term: "Background", detail: "Terrain from airport topo.png — same zoom-9 crop span as radial plots" },
     ],
   },
   monthly_fog: {
@@ -247,7 +271,14 @@ const state = {
   manifest: null,
   airportCoverage: null,
   wrMode: "summary", // 'summary' or 'hourly'
+  lhMode: "summary", // 'summary' or 'hourly' (lightning heatmap)
   windRoseLayoutRef: {},
+  lightningHeatmapScaleRef: null,
+  lightningHeatmapHourlyScaleRef: null,
+  lightningHeatmapHourlyScaleKey: null,
+  lightningHeatmapSummaryLayoutRef: null,
+  lightningHeatmapLayoutRef: null,
+  lightningHeatmapPinnedTraceRef: null,
   chartLegendVisibility: {},
 };
 
@@ -441,6 +472,30 @@ function lookupLiteWindRoseHourlyPayload(dataMap, season, hour) {
   return null;
 }
 
+function liteLightningHourlyUrl(icao) {
+  return `data-lite/${icao}/lightning_heatmap_hourly.json.gz`;
+}
+
+function lookupLiteLightningHourlyGrid(dataMap, season, hour) {
+  if (!dataMap || typeof dataMap !== "object") {
+    return null;
+  }
+  const grids = dataMap.grids && typeof dataMap.grids === "object" ? dataMap.grids : dataMap;
+  const key = liteWindRoseHourlyKey(season, hour);
+  if (Array.isArray(grids[key])) {
+    return grids[key];
+  }
+  const legacyKey = legacyLiteWindRoseHourlyKey(season, hour);
+  if (Array.isArray(grids[legacyKey])) {
+    return grids[legacyKey];
+  }
+  return null;
+}
+
+function supportsLightningHeatmapHourly(icao = els.icao?.value) {
+  return Boolean(String(icao || "").trim());
+}
+
 const LITE_DAY_MODES = ["all", "rain", "non_rain"];
 
 const LITE_MODE_FIGURE_SPECS = [
@@ -618,6 +673,52 @@ const fogPanels = [
   { key: "dewpoint", toolbarId: "chart-toolbar-4" },
 ];
 
+const defaultLegendTraceVisibilityByFigure = {
+  temp_dewpoint: {
+    "Avg Daily Max Td": "legendonly",
+    "Avg Daily Min Td": "legendonly",
+  },
+};
+
+const THUNDER_LEGEND_LABEL = "Thunderstorm";
+const LEGACY_THUNDER_LEGEND_LABELS = new Set([
+  "Thunderstorm (>2008)",
+  "TS (>2008)",
+  "Lightning magnitude",
+  "Thunderstorms",
+]);
+const thunderLegendFigureIds = new Set([
+  "rain_thunder",
+  "monthly_precip",
+  "hourly_precip",
+  "gale_weather_split",
+]);
+
+function normalizeThunderLegendLabels(figure, figureId = "") {
+  if (!figure || !thunderLegendFigureIds.has(figureId)) {
+    return;
+  }
+  (figure.data || []).forEach((trace) => {
+    const name = String(trace?.name || "").trim();
+    if (LEGACY_THUNDER_LEGEND_LABELS.has(name) || name === THUNDER_LEGEND_LABEL) {
+      trace.name = THUNDER_LEGEND_LABEL;
+    }
+  });
+}
+
+function getStoredThunderLegendVisibility(stored) {
+  if (!stored) {
+    return undefined;
+  }
+  const keys = [...LEGACY_THUNDER_LEGEND_LABELS, THUNDER_LEGEND_LABEL];
+  for (const key of keys) {
+    if (Object.hasOwn(stored, key)) {
+      return stored[key];
+    }
+  }
+  return undefined;
+}
+
 const frequencyFigureIds = new Set([
   "rain_thunder",
   "temp_dewpoint",
@@ -629,6 +730,7 @@ const frequencyFigureIds = new Set([
   "fog_cloud_joint",
   "monthly_smoke",
   "hourly_smoke",
+  "hourly_precip",
 ]);
 
 const monthlyFrequencyFigureIds = new Set([
@@ -645,6 +747,7 @@ const monthlyFrequencyFigureIds = new Set([
 const hourlyFrequencyFigureIds = new Set([
   "fog_share",
   "hourly_smoke",
+  "hourly_precip",
 ]);
 
 const strictValueHoverFigureIds = new Set([
@@ -657,6 +760,7 @@ const strictValueHoverFigureIds = new Set([
   "fog_share",
   "monthly_smoke",
   "hourly_smoke",
+  "hourly_precip",
   "fog_cloud_joint",
 ]);
 
@@ -665,6 +769,12 @@ const strictGroupedBarOverlayFigureIds = new Set([
   "monthly_precip",
   "monthly_smoke",
   "hourly_smoke",
+  "hourly_precip",
+]);
+
+// Paired bars with manual x offsets on overlaid dual y-axes (not px.bar grouped bars).
+const dualAxisPairedBarOverlayFigureIds = new Set([
+  "hourly_precip",
 ]);
 
 const strictStackedBarOverlayFigureIds = new Set([
@@ -673,6 +783,22 @@ const strictStackedBarOverlayFigureIds = new Set([
   "monthly_fog",
   "fog_share",
 ]);
+
+// Charts with terrain backgrounds tied to fixed axis ranges (not responsive y scaling).
+const fixedTopoAxisFigureIds = new Set([
+  "lightning_heatmap",
+]);
+
+function hostSupportsErrorBarRefresh(host) {
+  if (!host?.data?.length || host.layout?.polar) {
+    return false;
+  }
+  return !fixedTopoAxisFigureIds.has(host.dataset?.figureId || "");
+}
+
+function hostHasFixedTopoAxisRange(host) {
+  return Boolean(host?.layout?.polar) || fixedTopoAxisFigureIds.has(host?.dataset?.figureId || "");
+}
 
 // Keep synthetic error-bar traces above bars/lines (e.g. precip columns on temp_dewpoint).
 const ERROR_BAR_OVERLAY_ZORDER = 10;
@@ -720,6 +846,8 @@ function finishStrictValueErrorBarOverlays(host) {
 const overviewFogToolbarId = "chart-toolbar-4";
 const overviewWindToolbarId = "chart-toolbar-1";
 const windSectionWindToolbarId = "chart-toolbar-1";
+const precipitationLightningToolbarId = "chart-toolbar-4";
+const LIGHTNING_PLAY_INTERVAL_MS = 300;
 
 const dualSliderDefs = [
   { key: "year", minEl: "year-start", maxEl: "year-end", highlightEl: "year-highlight", minValueEl: "year-start-value", maxValueEl: "year-end-value", format: (v) => String(v) },
@@ -779,6 +907,14 @@ const els = {
   wrHourValue: null,
   wrHourPlayBtn: null,
   wrToolbarTemplate: document.getElementById("wr-toolbar-template"),
+  lhModeSummary: null,
+  lhModeHourly: null,
+  lhHourScroller: null,
+  lhHourScrollerContainer: null,
+  lhHourValue: null,
+  lhHourPlayBtn: null,
+  lhToolbarTemplate: document.getElementById("lh-toolbar-template"),
+  precipitationLightningToolbar: document.getElementById(precipitationLightningToolbarId),
 };
 
 function ensureChartShell(host) {
@@ -808,6 +944,9 @@ function ensureChartShell(host) {
     maximizeButton.addEventListener("click", () => {
       const chartIndex = Number(maximizeButton.dataset.chartIndex);
       state.maximizedChartIndex = state.maximizedChartIndex === chartIndex ? null : chartIndex;
+      if (state.lhMode === "hourly") {
+        resetLightningHourlyLayoutState();
+      }
       applyMaximizedChartState();
       invalidateCanonicalGeometryForVisibleCharts();
       if (state.latestFigures.length) {
@@ -1239,6 +1378,7 @@ function updateChartToolbars(section = state.displayedSection) {
   }
 
   renderWindRoseToolbar(section);
+  renderLightningHeatmapToolbar(section);
 }
 
 function formatWindRoseHourLabel(hourValue) {
@@ -1488,6 +1628,7 @@ function resetWindRoseModeOnSectionChange(nextSection) {
   }
   stopWindRosePlayback();
   state.wrMode = "summary";
+  resetLightningHeatmapModeOnSectionChange(nextSection);
   clearChartLegendVisibility();
 }
 
@@ -1622,6 +1763,971 @@ function attachWindRoseListeners() {
   }
 }
 
+function getLightningHeatmapChartUi() {
+  const index = state.latestFigures.findIndex((item) => item.id === "lightning_heatmap");
+  if (index < 0) {
+    return null;
+  }
+  return chartUi[index] || null;
+}
+
+function syncLightningHourlyColorbarVisibility() {
+  const ui = getLightningHeatmapChartUi();
+  if (!ui?.shell) {
+    return;
+  }
+  ui.shell.classList.remove("has-lightning-hourly-colorbar");
+  const colorbar = ui.shell.querySelector(".lightning-hourly-colorbar");
+  if (colorbar) {
+    colorbar.classList.add("hidden");
+  }
+}
+
+function captureLightningHeatmapLayoutSnapshot(host, baseLayout = null) {
+  const source = baseLayout || host?.layout;
+  if (!source) {
+    return null;
+  }
+  const snapshot = JSON.parse(JSON.stringify(source));
+  snapshot.autosize = false;
+  const width = Math.round(host.offsetWidth || host.clientWidth || 0);
+  const height = Math.round(host.offsetHeight || host.clientHeight || 0);
+  if (width > 0) {
+    snapshot.width = width;
+  }
+  if (height > 0) {
+    snapshot.height = height;
+  }
+  snapshot.xaxis = {
+    ...(snapshot.xaxis || {}),
+    fixedrange: true,
+    automargin: false,
+  };
+  snapshot.yaxis = {
+    ...(snapshot.yaxis || {}),
+    fixedrange: true,
+    automargin: false,
+  };
+  return snapshot;
+}
+
+function captureLightningHeatmapSummaryLayoutRef(host) {
+  if (!host?.layout) {
+    return;
+  }
+  const snapshot = JSON.parse(JSON.stringify(host.layout));
+  const width = Math.round(host.offsetWidth || host.clientWidth || 0);
+  const height = Math.round(host.offsetHeight || host.clientHeight || 0);
+  if (width > 0) {
+    snapshot.width = width;
+  }
+  if (height > 0) {
+    snapshot.height = height;
+  }
+  snapshot.autosize = false;
+  state.lightningHeatmapSummaryLayoutRef = snapshot;
+  const traceIndex = lightningHeatmapTraceIndex(host);
+  if (traceIndex >= 0) {
+    state.lightningHeatmapPinnedTraceRef = JSON.parse(JSON.stringify(host.data[traceIndex]));
+  }
+}
+
+function lightningHeatmapTraceIndex(hostOrFigure) {
+  const data = hostOrFigure?.data || hostOrFigure?.figure?.data || [];
+  return data.findIndex((entry) => String(entry?.type || "").toLowerCase() === "heatmap");
+}
+
+function lightningHeatmapTraceIndices(hostOrFigure) {
+  const data = hostOrFigure?.data || hostOrFigure?.figure?.data || [];
+  const indices = [];
+  data.forEach((entry, index) => {
+    if (String(entry?.type || "").toLowerCase() === "heatmap") {
+      indices.push(index);
+    }
+  });
+  return indices;
+}
+
+// The maximized hourly map jittered because the single heatmap trace owned both
+// the colorbar (an auto-margin pusher) and the scaleanchor constraint, so every
+// z-restyle re-measured the colorbar and re-solved the square aspect, nudging the
+// plot rectangle (and the data-anchored topo image) by a few pixels. We split the
+// heatmap into a static "chrome" trace that owns the colorbar and a visible "data"
+// trace (showscale:false) that is the only one scrubbed, so z updates never touch
+// the colorbar/margins and the layout is pixel-stable.
+function buildLightningChromeHeatmapTrace(dataTrace) {
+  // A heatmap with all-null z renders no colorbar, so the chrome trace carries a
+  // tiny, static, valid z (spanning zmin..zmax). Its cells sit far outside the fixed
+  // axis range and are clipped away, so nothing is drawn on the map — but the colorbar
+  // renders and, because this trace is never restyled, stays pixel-stable.
+  const zmin = Number(dataTrace?.zmin) || 0;
+  const zmax = Math.max(zmin + 1, Number(dataTrace?.zmax) || 1);
+  const offRange = 1e6;
+  return {
+    type: "heatmap",
+    x: [offRange, offRange + 1],
+    y: [offRange, offRange + 1],
+    z: [[zmin, zmax], [zmin, zmax]],
+    zmin,
+    zmax,
+    zauto: false,
+    colorscale: dataTrace?.colorscale || LIGHTNING_HEATMAP_COLORSCALE,
+    showscale: true,
+    hoverinfo: "skip",
+    showlegend: false,
+    colorbar: dataTrace?.colorbar ? JSON.parse(JSON.stringify(dataTrace.colorbar)) : undefined,
+    name: "__lightning_chrome",
+  };
+}
+
+function ensureLightningHourlyTwoTraceFigure(figure) {
+  if (!figure?.data) {
+    return figure;
+  }
+  const indices = lightningHeatmapTraceIndices(figure);
+  if (!indices.length || indices.length >= 2) {
+    return figure;
+  }
+  const dataTrace = figure.data[indices[0]];
+  const chrome = buildLightningChromeHeatmapTrace(dataTrace);
+  // The data trace renders the cells; the chrome trace (appended last) renders only
+  // the colorbar. Keep the data trace first so existing "first heatmap" lookups keep
+  // targeting it for z scrubbing and layout pinning.
+  dataTrace.showscale = false;
+  figure.data.push(chrome);
+  return figure;
+}
+
+// In hourly mode the base chart shows the topo, rings, axes, and colorbar but NOT
+// the data cells (those live in the overlay). Blank the data trace z so the base is
+// fully static while keeping its x/y/zmin/zmax/colorscale available for the overlay.
+function suppressLightningBaseCells(figure) {
+  const idx = lightningHeatmapTraceIndex(figure);
+  if (idx < 0) {
+    return;
+  }
+  const trace = figure.data[idx];
+  if (Array.isArray(trace?.z)) {
+    trace.z = trace.z.map((row) => (Array.isArray(row) ? row.map(() => null) : null));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Lightning hourly overlay (base + overlay architecture)
+//
+// The maximized hourly scrub jittered because Plotly.restyle on the single map
+// div re-ran the layout solver every hour step (colorbar auto-margin oscillation
+// + scaleanchor re-solve), nudging the data-anchored topo image by ~1px. Here the
+// static "base" div (topo, rings, axes, colorbar) is rendered once and never
+// restyled, while a transparent "overlay" div holds only the heatmap cells. The
+// overlay has no colorbar and no scaleanchor, and its margins/ranges are copied
+// from the base's resolved layout, so a z-only restyle cannot move anything.
+// ---------------------------------------------------------------------------
+function getLightningOverlayHost() {
+  const ui = getLightningHeatmapChartUi();
+  if (!ui?.shell) {
+    return null;
+  }
+  return ui.shell.querySelector(".lightning-hour-overlay");
+}
+
+function positionLightningOverlay(baseHost, overlay) {
+  if (!baseHost || !overlay) {
+    return;
+  }
+  overlay.style.left = `${baseHost.offsetLeft}px`;
+  overlay.style.top = `${baseHost.offsetTop}px`;
+  overlay.style.width = `${Math.round(baseHost.offsetWidth || baseHost.clientWidth || 0)}px`;
+  overlay.style.height = `${Math.round(baseHost.offsetHeight || baseHost.clientHeight || 0)}px`;
+}
+
+function ensureLightningOverlayHost(baseHost) {
+  const ui = getLightningHeatmapChartUi();
+  if (!ui?.shell || !baseHost) {
+    return null;
+  }
+  let overlay = ui.shell.querySelector(".lightning-hour-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.className = "lightning-hour-overlay";
+    ui.shell.appendChild(overlay);
+  }
+  positionLightningOverlay(baseHost, overlay);
+  return overlay;
+}
+
+function buildLightningOverlayLayout(baseHost) {
+  const full = baseHost?._fullLayout || {};
+  const size = full._size || {};
+  const layoutMargin = baseHost?.layout?.margin || {};
+  const width = Math.round(baseHost.offsetWidth || baseHost.clientWidth || 0);
+  const height = Math.round(baseHost.offsetHeight || baseHost.clientHeight || 0);
+  const xRange = Array.isArray(full.xaxis?.range) ? full.xaxis.range.slice() : null;
+  const yRange = Array.isArray(full.yaxis?.range) ? full.yaxis.range.slice() : null;
+  const margin = {
+    l: Math.round(Number.isFinite(size.l) ? size.l : (layoutMargin.l || 0)),
+    r: Math.round(Number.isFinite(size.r) ? size.r : (layoutMargin.r || 0)),
+    t: Math.round(Number.isFinite(size.t) ? size.t : (layoutMargin.t || 0)),
+    b: Math.round(Number.isFinite(size.b) ? size.b : (layoutMargin.b || 0)),
+  };
+  const axisCommon = {
+    fixedrange: true,
+    visible: false,
+    showgrid: false,
+    zeroline: false,
+    ticks: "",
+    showticklabels: false,
+  };
+  return {
+    width,
+    height,
+    autosize: false,
+    margin,
+    paper_bgcolor: "rgba(0,0,0,0)",
+    plot_bgcolor: "rgba(0,0,0,0)",
+    showlegend: false,
+    hovermode: "closest",
+    xaxis: { ...axisCommon, range: xRange || undefined, autorange: !xRange },
+    yaxis: { ...axisCommon, range: yRange || undefined, autorange: !yRange },
+  };
+}
+
+const LIGHTNING_OVERLAY_HOVERTEMPLATE = "E: %{x:.1f} km<br>N: %{y:.1f} km<br>Count: %{z}<extra></extra>";
+
+function buildLightningOverlayDataTrace(baseHost, z) {
+  const dataIndex = lightningHeatmapTraceIndex(baseHost);
+  const base = (dataIndex >= 0 && baseHost.data?.[dataIndex]) ? baseHost.data[dataIndex] : {};
+  return {
+    type: "heatmap",
+    x: Array.isArray(base.x) ? base.x.slice() : undefined,
+    y: Array.isArray(base.y) ? base.y.slice() : undefined,
+    z,
+    zmin: base.zmin,
+    zmax: base.zmax,
+    zauto: false,
+    colorscale: base.colorscale || LIGHTNING_HEATMAP_COLORSCALE,
+    opacity: Number.isFinite(Number(base.opacity)) ? Number(base.opacity) : LIGHTNING_HEATMAP_OPACITY,
+    showscale: false,
+    hoverongaps: false,
+    hovertemplate: typeof base.hovertemplate === "string" ? base.hovertemplate : LIGHTNING_OVERLAY_HOVERTEMPLATE,
+    name: "__lightning_overlay",
+  };
+}
+
+function lightningOverlayZFromGrid(baseHost, zGrid) {
+  const meta = baseHost?.layout?.meta || {};
+  return Array.isArray(zGrid?.[0]) ? zGrid : buildLightningHeatmapZFromGrid(zGrid, meta);
+}
+
+async function enterLightningHourlyOverlay(baseHost, zGrid) {
+  if (!baseHost || !shouldUseHourlyLightningHeatmap()) {
+    return;
+  }
+  const overlay = ensureLightningOverlayHost(baseHost);
+  if (!overlay) {
+    return;
+  }
+  const z = lightningOverlayZFromGrid(baseHost, zGrid);
+  const layout = buildLightningOverlayLayout(baseHost);
+  const trace = buildLightningOverlayDataTrace(baseHost, z);
+  overlay.classList.add("is-visible");
+  await Plotly.react(overlay, [trace], layout, { displayModeBar: false, responsive: false });
+  const ctx = getLightningHourlyPinContext(baseHost);
+  lightningPlayback.overlayActive = true;
+  lightningPlayback.pinnedWidth = ctx.width;
+  lightningPlayback.pinnedHeight = ctx.height;
+  lightningPlayback.pinnedMaximized = ctx.maximized;
+}
+
+async function enterLightningHourlyOverlayCurrent(baseHost) {
+  if (!baseHost || !shouldUseHourlyLightningHeatmap()) {
+    return;
+  }
+  const icao = els.icao.value;
+  const season = els.season.value;
+  const hour = els.lhHourScroller?.value ?? "12";
+  try {
+    await ensureLightningHourlyFramesLoaded(icao);
+  } catch (error) {
+    return;
+  }
+  const zGrid = lookupLiteLightningHourlyGrid(lightningPlayback.liteHourlyMap, season, hour);
+  await awaitLayoutSettle();
+  await enterLightningHourlyOverlay(baseHost, zGrid);
+}
+
+function lightningOverlayMatchesContext(baseHost) {
+  if (!lightningPlayback.overlayActive) {
+    return false;
+  }
+  const overlay = getLightningOverlayHost();
+  if (!overlay || !overlay.data?.length) {
+    return false;
+  }
+  const ctx = getLightningHourlyPinContext(baseHost);
+  return lightningPlayback.pinnedWidth === ctx.width
+    && lightningPlayback.pinnedHeight === ctx.height
+    && lightningPlayback.pinnedMaximized === ctx.maximized;
+}
+
+function renderLightningOverlayFrame(zGrid) {
+  const overlay = getLightningOverlayHost();
+  if (!overlay || !overlay.data?.length) {
+    return Promise.resolve();
+  }
+  const baseHost = getLightningHeatmapChartHost();
+  const z = lightningOverlayZFromGrid(baseHost, zGrid);
+  return Plotly.restyle(overlay, { z: [z] }, [0]);
+}
+
+function teardownLightningOverlay() {
+  lightningPlayback.overlayActive = false;
+  const overlay = getLightningOverlayHost();
+  if (!overlay) {
+    return;
+  }
+  try {
+    Plotly.purge(overlay);
+  } catch (error) {
+    // ignore teardown failures
+  }
+  overlay.classList.remove("is-visible");
+  if (overlay.parentElement) {
+    overlay.parentElement.removeChild(overlay);
+  }
+}
+
+async function sealLightningHourlyPlot(host) {
+  if (!host?.data?.length || !state.lightningHeatmapLayoutRef) {
+    return;
+  }
+  const data = JSON.parse(JSON.stringify(host.data));
+  const layout = state.lightningHeatmapLayoutRef;
+  await Plotly.react(host, data, layout, {
+    displayModeBar: false,
+    responsive: false,
+  });
+}
+
+function getLightningHourlyPinContext(host) {
+  const index = state.latestFigures.findIndex((item) => item.id === "lightning_heatmap");
+  const isMaximized = Number.isInteger(state.maximizedChartIndex) && state.maximizedChartIndex === index;
+  return {
+    width: Math.round(host?.offsetWidth || host?.clientWidth || 0),
+    height: Math.round(host?.offsetHeight || host?.clientHeight || 0),
+    maximized: isMaximized,
+  };
+}
+
+function lightningHourlyPinMatchesContext(host) {
+  if (!lightningPlayback.layoutPinned || !state.lightningHeatmapLayoutRef) {
+    return false;
+  }
+  const ctx = getLightningHourlyPinContext(host);
+  return lightningPlayback.pinnedWidth === ctx.width
+    && lightningPlayback.pinnedHeight === ctx.height
+    && lightningPlayback.pinnedMaximized === ctx.maximized;
+}
+
+async function finalizeLightningHourlyLayoutPin(host) {
+  if (!host || !shouldUseHourlyLightningHeatmap()) {
+    return;
+  }
+
+  await awaitLayoutSettle();
+  const layoutPatch = buildLightningHeatmapLayoutPinPatch(host);
+  await Plotly.relayout(host, layoutPatch);
+  await awaitLayoutSettle();
+
+  state.lightningHeatmapLayoutRef = captureLightningHeatmapLayoutSnapshot(host);
+  const traceIndex = lightningHeatmapTraceIndex(host);
+  if (traceIndex >= 0) {
+    state.lightningHeatmapPinnedTraceRef = JSON.parse(JSON.stringify(host.data[traceIndex]));
+  }
+
+  await sealLightningHourlyPlot(host);
+  await awaitLayoutSettle();
+  state.lightningHeatmapLayoutRef = captureLightningHeatmapLayoutSnapshot(host);
+  if (traceIndex >= 0) {
+    state.lightningHeatmapPinnedTraceRef = JSON.parse(JSON.stringify(host.data[traceIndex]));
+  }
+
+  const ctx = getLightningHourlyPinContext(host);
+  lightningPlayback.pinnedWidth = ctx.width;
+  lightningPlayback.pinnedHeight = ctx.height;
+  lightningPlayback.pinnedMaximized = ctx.maximized;
+  lightningPlayback.layoutPinned = true;
+}
+
+function resetLightningHourlyLayoutState() {
+  teardownLightningOverlay();
+  lightningPlayback.layoutPinned = false;
+  lightningPlayback.pinnedWidth = null;
+  lightningPlayback.pinnedHeight = null;
+  lightningPlayback.pinnedMaximized = null;
+  state.lightningHeatmapLayoutRef = null;
+  state.lightningHeatmapPinnedTraceRef = null;
+  // Drop the memoized hourly colour scale so it is recomputed for the current
+  // ICAO/season on the next render. It is keyed by ICAO::season, so scrubbing
+  // (which never calls this) keeps a stable scale and stays flicker-free.
+  state.lightningHeatmapHourlyScaleRef = null;
+  state.lightningHeatmapHourlyScaleKey = null;
+  syncLightningHourlyColorbarVisibility();
+}
+
+const lightningPlayback = {
+  timer: null,
+  playing: false,
+  suppressSliderFetch: false,
+  renderInFlight: false,
+  liteHourlyMap: null,
+  liteHourlyIcao: null,
+  layoutPinned: false,
+  frameUpdating: false,
+  pendingHour: null,
+  pinnedWidth: null,
+  pinnedHeight: null,
+  pinnedMaximized: null,
+  overlayActive: false,
+};
+
+function shouldSkipLightningHourlyTopoRelayout(host) {
+  return host?.dataset?.figureId === "lightning_heatmap"
+    && shouldUseHourlyLightningHeatmap()
+    && (lightningPlayback.layoutPinned || lightningPlayback.frameUpdating);
+}
+
+function lightningHeatmapToolbarSections() {
+  return new Set(["precipitation"]);
+}
+
+function shouldUseHourlyLightningHeatmap(section = state.displayedSection) {
+  return lightningHeatmapToolbarSections().has(section)
+    && state.lhMode === "hourly"
+    && supportsLightningHeatmapHourly();
+}
+
+function getLightningHeatmapChartHost() {
+  const index = state.latestFigures.findIndex((item) => item.id === "lightning_heatmap");
+  if (index < 0) {
+    return null;
+  }
+  return els.charts[index] || null;
+}
+
+function updateLightningPlayButton() {
+  if (!els.lhHourPlayBtn) {
+    return;
+  }
+  els.lhHourPlayBtn.classList.toggle("is-playing", lightningPlayback.playing);
+  els.lhHourPlayBtn.setAttribute(
+    "aria-label",
+    lightningPlayback.playing ? "Pause hourly lightning heatmap animation" : "Play hourly lightning heatmap animation",
+  );
+  els.lhHourPlayBtn.title = lightningPlayback.playing ? "Pause hourly animation" : "Play hourly animation";
+}
+
+function stopLightningPlayback() {
+  if (lightningPlayback.timer) {
+    clearInterval(lightningPlayback.timer);
+    lightningPlayback.timer = null;
+  }
+  lightningPlayback.playing = false;
+  lightningPlayback.renderInFlight = false;
+  updateLightningPlayButton();
+}
+
+function setLightningHourDisplay(hourValue) {
+  const hour = String(hourValue ?? "0");
+  lightningPlayback.suppressSliderFetch = true;
+  if (els.lhHourScroller) {
+    els.lhHourScroller.value = hour;
+  }
+  if (els.lhHourValue) {
+    els.lhHourValue.textContent = formatWindRoseHourLabel(hour);
+  }
+  lightningPlayback.suppressSliderFetch = false;
+}
+
+async function ensureLightningHourlyFramesLoaded(icao = els.icao.value) {
+  const code = String(icao || "").trim().toUpperCase();
+  if (!supportsLightningHeatmapHourly(code)) {
+    throw new Error("Hourly lightning heatmap is not available for this aerodrome");
+  }
+  if (lightningPlayback.liteHourlyMap && lightningPlayback.liteHourlyIcao === code) {
+    return;
+  }
+
+  const url = liteLightningHourlyUrl(code);
+  const needsFetch = !liteCache.has(url);
+  if (needsFetch) {
+    showLoading("Preparing lightning animation...");
+  }
+  try {
+    lightningPlayback.liteHourlyMap = await fetchJsonCached(url);
+    lightningPlayback.liteHourlyIcao = code;
+  } finally {
+    if (needsFetch) {
+      hideLoading();
+    }
+  }
+}
+
+function applyHourlyGridToLightningFigure(figure, zGrid) {
+  const trace = (figure?.data || []).find((entry) => String(entry?.type || "").toLowerCase() === "heatmap");
+  if (!trace) {
+    return;
+  }
+
+  const meta = figure?.layout?.meta || {};
+  const geom = lightningHeatmapGeometry(meta);
+  trace.z = buildLightningHeatmapZFromGrid(zGrid, meta);
+  trace.x = [...geom.centers];
+  trace.y = [...geom.centers];
+}
+
+function buildLightningHeatmapZFromGrid(zGrid, meta = {}) {
+  const geom = lightningHeatmapGeometry(meta);
+  return geom.centers.map((yc, rowIndex) => geom.centers.map((xc, colIndex) => {
+    if (!cellIntersectsLightningDisk(xc, yc, geom.halfCell, geom.radiusKm)) {
+      return null;
+    }
+    const row = Array.isArray(zGrid?.[rowIndex]) ? zGrid[rowIndex] : [];
+    const numeric = Number(row[colIndex]);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+  }));
+}
+
+function lightningHeatmapRestylePatch(z, scale = {}) {
+  const scaleMin = Number(scale.zmin) || 0;
+  const scaleMax = Math.max(scaleMin + 1, Number(scale.zmax) || 1);
+  const dtick = lightningColorbarDtick(scaleMin, scaleMax);
+  const patch = {
+    zmin: [scaleMin],
+    zmax: [scaleMax],
+    zauto: [false],
+    showscale: [true],
+    colorscale: [LIGHTNING_HEATMAP_COLORSCALE],
+    "colorbar.dtick": [dtick],
+    "colorbar.tick0": [Math.floor(scaleMin / dtick) * dtick],
+    "colorbar.title.text": ["Strike count"],
+    "colorbar.x": [1.02],
+    "colorbar.xanchor": ["left"],
+    "colorbar.y": [0.5],
+    "colorbar.yanchor": ["middle"],
+    "colorbar.len": [0.75],
+  };
+  if (z != null) {
+    patch.z = [z];
+  }
+  return patch;
+}
+
+function restyleLightningHeatmapHour(host, zGridOrMatrix, scale = {}, { zOnly = false } = {}) {
+  const indices = lightningHeatmapTraceIndices(host);
+  if (!indices.length) {
+    return Promise.resolve();
+  }
+  const dataIndex = indices[0];
+  const meta = host?.layout?.meta || {};
+  const z = Array.isArray(zGridOrMatrix?.[0])
+    ? zGridOrMatrix
+    : buildLightningHeatmapZFromGrid(zGridOrMatrix, meta);
+  // In two-trace mode the colorbar lives on the static chrome trace, so the visible
+  // data trace only ever needs a z update — never the colorbar/layout-affecting patch.
+  if ((zOnly && lightningPlayback.layoutPinned) || indices.length >= 2) {
+    lightningPlayback.frameUpdating = true;
+    return Plotly.restyle(host, { z: [z] }, [dataIndex]).finally(() => {
+      lightningPlayback.frameUpdating = false;
+    });
+  }
+  const patch = lightningHeatmapRestylePatch(z, scale);
+  return Plotly.restyle(host, patch, [dataIndex]);
+}
+
+function buildLightningHeatmapLayoutPinPatch(host) {
+  const patch = buildTopoMapPanelRelayout(host);
+  const layout = host?.layout || {};
+  const meta = layout.meta || {};
+  const cropExtentKm = Number(meta.topoCropExtentKm) || topoCropExtentKmFromLat(meta.airportLat);
+  const width = Math.round(host?.offsetWidth || host?.clientWidth || 0);
+  const height = Math.round(host?.offsetHeight || host?.clientHeight || 0);
+  const marginR = Number(layout?.margin?.r);
+
+  patch.uirevision = layout.uirevision;
+  patch.autosize = false;
+  if (width > 0) {
+    patch.width = width;
+  }
+  if (height > 0) {
+    patch.height = height;
+  }
+  if (Number.isFinite(marginR) && marginR > 0) {
+    patch["margin.r"] = marginR;
+  }
+  patch["xaxis.scaleanchor"] = "y";
+  patch["xaxis.scaleratio"] = 1;
+  patch["xaxis.automargin"] = false;
+  patch["yaxis.automargin"] = false;
+  patch["xaxis.fixedrange"] = true;
+  patch["yaxis.fixedrange"] = true;
+
+  (layout.images || []).forEach((image, index) => {
+    if (image?.xref === "x" && image?.yref === "y") {
+      patch[`images[${index}].x`] = 0;
+      patch[`images[${index}].y`] = 0;
+      patch[`images[${index}].sizex`] = cropExtentKm;
+      patch[`images[${index}].sizey`] = cropExtentKm;
+      patch[`images[${index}].xanchor`] = "center";
+      patch[`images[${index}].yanchor`] = "middle";
+      patch[`images[${index}].sizing`] = "stretch";
+      patch[`images[${index}].layer`] = "below";
+    }
+  });
+
+  return patch;
+}
+
+function finalizeLightningHeatmapPostRender(host, scale, { icao = "", captureSummary = false, pinHourly = false } = {}) {
+  return restyleLightningHeatmapScale(host, scale)
+    .then(() => relayoutTopoMapPanel(host))
+    .then(() => scheduleHostResize(host))
+    .then(async () => {
+      await awaitLayoutSettle();
+      if (captureSummary) {
+        captureLightningHeatmapSummaryLayoutRef(host);
+      }
+      if (pinHourly) {
+        await finalizeLightningHourlyLayoutPin(host);
+      }
+    });
+}
+
+async function pinLightningHeatmapHourlyLayout(host) {
+  return finalizeLightningHourlyLayoutPin(host);
+}
+
+function captureLightningHeatmapSummaryScale(figure, { icao = "", season = "all" } = {}) {
+  const clone = JSON.parse(JSON.stringify(figure || {}));
+  const scale = applyLightningHeatmapStyle(clone, { icao, season });
+  if (scale) {
+    state.lightningHeatmapScaleRef = { ...scale };
+  }
+  return state.lightningHeatmapScaleRef;
+}
+
+// Hourly bins hold far fewer strikes than the summary (which aggregates all hours),
+// so reusing the summary range washes the hourly cells out. Compute a dedicated
+// range from the union of all 24 hourly grids for the season. This is fixed across
+// hours, so the colorbar is set once when the base/overlay are built and never
+// restyled while scrubbing — preserving the zero-flicker behaviour.
+function computeLightningHourlyScale(season) {
+  const dataMap = lightningPlayback.liteHourlyMap;
+  if (!dataMap) {
+    return null;
+  }
+  const positives = [];
+  for (let hour = 0; hour < 24; hour += 1) {
+    const zGrid = lookupLiteLightningHourlyGrid(dataMap, season, String(hour));
+    (zGrid || []).forEach((row) => {
+      (Array.isArray(row) ? row : [row]).forEach((value) => {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric) && numeric > 0) {
+          positives.push(numeric);
+        }
+      });
+    });
+  }
+  if (!positives.length) {
+    return null;
+  }
+  const range = lightningHeatmapColorRange([positives]);
+  if (!range) {
+    return null;
+  }
+  const zmin = Number(range.zmin) || 0;
+  const stretchedMax = (Number(range.zmax) || 1) * LIGHTNING_HOURLY_SCALE_HEADROOM;
+  return { zmin, zmax: Math.max(zmin + 1, stretchedMax) };
+}
+
+function ensureLightningHourlyScale(icao, season) {
+  const key = `${String(icao || "").trim().toUpperCase()}::${String(season || "all")}`;
+  if (state.lightningHeatmapHourlyScaleKey !== key || !state.lightningHeatmapHourlyScaleRef) {
+    const scale = computeLightningHourlyScale(season);
+    if (scale) {
+      state.lightningHeatmapHourlyScaleRef = { ...scale };
+      state.lightningHeatmapHourlyScaleKey = key;
+    }
+  }
+  return state.lightningHeatmapHourlyScaleRef;
+}
+
+async function applyHourlyLightningHeatmapOverride(data, icao, season) {
+  if (!shouldUseHourlyLightningHeatmap() || !data?.figures?.length) {
+    return data;
+  }
+
+  const hour = els.lhHourScroller?.value ?? "12";
+  await ensureLightningHourlyFramesLoaded(icao);
+  const zGrid = lookupLiteLightningHourlyGrid(lightningPlayback.liteHourlyMap, season, hour);
+
+  const index = data.figures.findIndex((item) => item.id === "lightning_heatmap");
+  if (index < 0) {
+    return data;
+  }
+
+  const summaryFig = data.figures[index];
+  if (!state.lightningHeatmapScaleRef && summaryFig?.figure) {
+    captureLightningHeatmapSummaryScale(summaryFig.figure, { icao, season });
+  }
+
+  const hourlyFig = JSON.parse(JSON.stringify(summaryFig));
+  applyHourlyGridToLightningFigure(hourlyFig.figure, zGrid);
+  applyLightningHeatmapStyle(hourlyFig.figure, {
+    icao,
+    season,
+    fixedScale: ensureLightningHourlyScale(icao, season),
+  });
+  ensureLightningHourlyTwoTraceFigure(hourlyFig.figure);
+  // The base chart shows only the colorbar/frame; the data cells live in the overlay.
+  suppressLightningBaseCells(hourlyFig.figure);
+  data.figures[index] = hourlyFig;
+  return data;
+}
+
+async function renderLightningHeatmapHourFrame(hour, section = state.displayedSection) {
+  if (!shouldUseHourlyLightningHeatmap(section)) {
+    return;
+  }
+
+  if (lightningPlayback.renderInFlight) {
+    lightningPlayback.pendingHour = hour;
+    return;
+  }
+
+  lightningPlayback.renderInFlight = true;
+  try {
+    let targetHour = hour;
+    do {
+      lightningPlayback.pendingHour = null;
+      await renderLightningHeatmapHourFrameCore(targetHour, section);
+      targetHour = lightningPlayback.pendingHour;
+    } while (targetHour != null);
+  } finally {
+    lightningPlayback.renderInFlight = false;
+  }
+}
+
+async function renderLightningHeatmapHourFrameCore(hour, section = state.displayedSection) {
+  const host = getLightningHeatmapChartHost();
+  if (!host) {
+    return;
+  }
+
+  const scale = state.lightningHeatmapScaleRef;
+  if (!scale || !Number.isFinite(Number(scale.zmax)) || Number(scale.zmax) <= 0) {
+    return;
+  }
+
+  const icao = els.icao.value;
+  const season = els.season.value;
+  await ensureLightningHourlyFramesLoaded(icao);
+  const zGrid = lookupLiteLightningHourlyGrid(lightningPlayback.liteHourlyMap, season, hour);
+
+  // Scrub only the transparent overlay; the base map (with the colorbar) is never
+  // touched, so nothing in the static layer can move. Rebuild the overlay only when
+  // the chart was resized/maximized since it was last built.
+  if (!lightningOverlayMatchesContext(host)) {
+    await enterLightningHourlyOverlay(host, zGrid);
+    return;
+  }
+  await renderLightningOverlayFrame(zGrid);
+}
+
+async function advanceLightningPlaybackFrame() {
+  if (!lightningPlayback.playing || lightningPlayback.renderInFlight) {
+    return;
+  }
+
+  const currentHour = Number(els.lhHourScroller?.value ?? 0);
+  const nextHour = (currentHour + 1) % 24;
+  setLightningHourDisplay(nextHour);
+
+  try {
+    await renderLightningHeatmapHourFrame(nextHour);
+  } catch (error) {
+    console.warn("Failed to advance lightning heatmap playback:", error);
+    stopLightningPlayback();
+  }
+}
+
+async function startLightningPlayback() {
+  if (!shouldUseHourlyLightningHeatmap()) {
+    return;
+  }
+
+  try {
+    await ensureLightningHourlyFramesLoaded();
+  } catch (error) {
+    console.warn("Failed to prepare lightning heatmap playback:", error);
+    return;
+  }
+
+  lightningPlayback.playing = true;
+  updateLightningPlayButton();
+  lightningPlayback.timer = setInterval(() => {
+    advanceLightningPlaybackFrame();
+  }, LIGHTNING_PLAY_INTERVAL_MS);
+}
+
+async function toggleLightningPlayback() {
+  if (lightningPlayback.playing) {
+    stopLightningPlayback();
+    return;
+  }
+  await startLightningPlayback();
+}
+
+function resetLightningHeatmapModeOnSectionChange(nextSection) {
+  stopLightningPlayback();
+  if (nextSection !== "precipitation") {
+    state.lhMode = "summary";
+    state.lightningHeatmapScaleRef = null;
+    lightningPlayback.liteHourlyMap = null;
+    lightningPlayback.liteHourlyIcao = null;
+    resetLightningHourlyLayoutState();
+  }
+}
+
+function renderLightningHeatmapToolbar(section = state.displayedSection) {
+  const toolbarEl = section === "precipitation" ? els.precipitationLightningToolbar : null;
+  const showToolbar = section === "precipitation" && supportsLightningHeatmapHourly();
+
+  if (!showToolbar || !toolbarEl) {
+    if (els.lhToolbarContainer && els.lhToolbarContainer.parentElement) {
+      els.lhToolbarContainer.parentElement.removeChild(els.lhToolbarContainer);
+    }
+    return;
+  }
+
+  if (!els.lhModeSummary && els.lhToolbarTemplate) {
+    els.lhToolbarContainer = els.lhToolbarTemplate;
+    els.lhToolbarContainer.classList.remove("hidden");
+    els.lhModeSummary = els.lhToolbarContainer.querySelector("#lh-mode-summary");
+    els.lhModeHourly = els.lhToolbarContainer.querySelector("#lh-mode-hourly");
+    els.lhHourScroller = els.lhToolbarContainer.querySelector("#lh-hour-scroller");
+    els.lhHourScrollerContainer = els.lhToolbarContainer.querySelector("#lh-hour-scroller-container");
+    els.lhHourValue = els.lhToolbarContainer.querySelector("#lh-hour-value");
+    els.lhHourPlayBtn = els.lhToolbarContainer.querySelector("#lh-hour-play");
+    attachLightningHeatmapListeners();
+  }
+
+  if (!els.lhToolbarContainer) {
+    return;
+  }
+
+  toolbarEl.innerHTML = "";
+  toolbarEl.appendChild(els.lhToolbarContainer);
+  toolbarEl.classList.remove("hidden");
+
+  const isHourly = state.lhMode === "hourly";
+  toolbarEl.classList.toggle("is-lightning-toolbar", true);
+  toolbarEl.classList.toggle("is-hourly-mode", isHourly);
+
+  if (els.lhModeSummary) {
+    els.lhModeSummary.classList.toggle("active", !isHourly);
+  }
+  if (els.lhModeHourly) {
+    els.lhModeHourly.classList.toggle("active", isHourly);
+  }
+  if (els.lhHourScrollerContainer) {
+    els.lhHourScrollerContainer.classList.toggle("hidden", !isHourly);
+    els.lhHourScrollerContainer.setAttribute("aria-hidden", isHourly ? "false" : "true");
+    els.lhHourScrollerContainer.classList.toggle("is-hidden-state", !isHourly);
+  }
+  if (isHourly && els.lhHourScroller && els.lhHourValue) {
+    els.lhHourValue.textContent = formatWindRoseHourLabel(els.lhHourScroller.value);
+  }
+  if (!isHourly) {
+    stopLightningPlayback();
+  }
+  updateLightningPlayButton();
+  syncLightningHourlyColorbarVisibility(section);
+}
+
+function attachLightningHeatmapListeners() {
+  if (attachLightningHeatmapListeners.initialized) {
+    return;
+  }
+  attachLightningHeatmapListeners.initialized = true;
+
+  if (els.lhModeSummary) {
+    els.lhModeSummary.addEventListener("click", () => {
+      stopLightningPlayback();
+      state.lhMode = "summary";
+      state.lightningHeatmapScaleRef = null;
+      resetLightningHourlyLayoutState();
+      els.lhModeSummary.classList.add("active");
+      els.lhModeHourly.classList.remove("active");
+      els.lhHourScrollerContainer.classList.add("hidden");
+      if (state.displayedSection === "precipitation") {
+        fetchCharts();
+      }
+    });
+  }
+
+  if (els.lhModeHourly) {
+    els.lhModeHourly.addEventListener("click", () => {
+      stopLightningPlayback();
+      state.lhMode = "hourly";
+      resetLightningHourlyLayoutState();
+      els.lhModeHourly.classList.add("active");
+      els.lhModeSummary.classList.remove("active");
+      els.lhHourScrollerContainer.classList.remove("hidden");
+      if (state.displayedSection === "precipitation") {
+        fetchCharts();
+      }
+    });
+  }
+
+  if (els.lhHourPlayBtn) {
+    els.lhHourPlayBtn.addEventListener("click", () => {
+      toggleLightningPlayback();
+    });
+  }
+
+  if (els.lhHourScroller) {
+    els.lhHourScroller.addEventListener("pointerdown", () => {
+      if (lightningPlayback.playing) {
+        stopLightningPlayback();
+      }
+    });
+    els.lhHourScroller.addEventListener("input", () => {
+      if (lightningPlayback.playing) {
+        stopLightningPlayback();
+      }
+      els.lhHourValue.textContent = formatWindRoseHourLabel(els.lhHourScroller.value);
+      if (lightningPlayback.suppressSliderFetch) {
+        return;
+      }
+      if (lightningHeatmapToolbarSections().has(state.displayedSection) && shouldUseHourlyLightningHeatmap()) {
+        renderLightningHeatmapHourFrame(els.lhHourScroller.value);
+      }
+    });
+    els.lhHourScroller.addEventListener("change", () => {
+      if (lightningPlayback.suppressSliderFetch || lightningPlayback.playing) {
+        return;
+      }
+      if (!lightningHeatmapToolbarSections().has(state.displayedSection)) {
+        return;
+      }
+      if (shouldUseHourlyLightningHeatmap()) {
+        renderLightningHeatmapHourFrame(els.lhHourScroller.value);
+      }
+    });
+  }
+}
+
 function applySectionLayout(section = state.displayedSection) {
   const chartGrid = document.getElementById("chart-grid");
   if (!chartGrid) {
@@ -1672,8 +2778,12 @@ function applySeasonMonthRange() {
 
 function refreshSeasonSelection() {
   stopWindRosePlayback();
+  stopLightningPlayback();
   windRosePlayback.apiHourlyFigures = null;
   windRosePlayback.apiCacheKey = null;
+  state.lightningHeatmapScaleRef = null;
+  state.lightningHeatmapSummaryLayoutRef = null;
+  resetLightningHourlyLayoutState();
   applySeasonMonthRange();
   clearChartAxisLocks();
   fetchCharts();
@@ -1842,6 +2952,9 @@ function getSectionFigureBatches(section) {
   }
   if (section === "fog_low_cloud") {
     return [["monthly_fog"], ["fog_share"], ["cloud_distribution"], ["fog_cloud_joint"]];
+  }
+  if (section === "precipitation") {
+    return [["monthly_precip"], ["precip_split"], ["hourly_precip"], ["lightning_heatmap"]];
   }
   return [[]];
 }
@@ -2428,7 +3541,13 @@ function usesResponsiveYAxis(figureId = "") {
 
 const FREQUENCY_CHART_MIN_MARGIN_B = 36;
 const FREQUENCY_CHART_MIN_MARGIN_L = 52;
-const CANONICAL_GEOMETRY_VERSION = 6;
+const HOURLY_PRECIP_PANEL = {
+  margin: { r: 42 },
+  xDomain: [0, 1],
+  y2TitleStandoff: 8,
+  y2TickStandoff: 2,
+};
+const CANONICAL_GEOMETRY_VERSION = 9;
 
 function figureUsesFrequencyAxisLabelLock(figureId = "", layout = {}) {
   if (!figureId || layout?.polar) {
@@ -2459,6 +3578,157 @@ function copyMarginBox(margin = {}) {
     }
   });
   return next;
+}
+
+function layoutUsesOverlayingY2(layout = {}) {
+  return String(layout?.yaxis2?.overlaying || "") === "y";
+}
+
+function computeDualOverlayAxisMax(figure, axisName = "y") {
+  const traces = figure?.data || [];
+  let maxValue = Number.NEGATIVE_INFINITY;
+  traces.forEach((trace) => {
+    if (!trace || trace.type !== "bar" || trace.visible === false || trace.visible === "legendonly") {
+      return;
+    }
+    if (traceAxisName(trace) !== axisName) {
+      return;
+    }
+    const bounds = traceBoundsWithError(trace, { includeLatentError: true });
+    if (!bounds) {
+      return;
+    }
+    maxValue = Math.max(maxValue, bounds.max);
+  });
+  if (!Number.isFinite(maxValue) || maxValue <= 0) {
+    return 1;
+  }
+  return finalizeAxisBounds(0, maxValue)?.max ?? maxValue;
+}
+
+function applyHourlyPrecipPanelGeometry(layout = {}) {
+  layout.margin = {
+    ...(layout.margin || {}),
+    r: Math.max(Number(layout.margin?.r) || 0, HOURLY_PRECIP_PANEL.margin.r),
+  };
+  layout.xaxis = {
+    ...(layout.xaxis || {}),
+    domain: HOURLY_PRECIP_PANEL.xDomain.slice(),
+    automargin: false,
+  };
+
+  const y2Title = layout.yaxis2?.title;
+  const y2TitleObj = typeof y2Title === "object" && y2Title !== null
+    ? y2Title
+    : { text: y2Title || "" };
+  layout.yaxis2 = {
+    ...(layout.yaxis2 || {}),
+    automargin: false,
+    ticklabelstandoff: HOURLY_PRECIP_PANEL.y2TickStandoff,
+    title: {
+      ...y2TitleObj,
+      standoff: HOURLY_PRECIP_PANEL.y2TitleStandoff,
+    },
+  };
+
+  return layout;
+}
+
+function enforceHourlyPrecipDualAxisLayout(figure, chartHeight = null) {
+  figure.layout = figure.layout || {};
+  if (chartHeight != null) {
+    figure.layout.height = chartHeight;
+  }
+
+  const yMax = computeDualOverlayAxisMax(figure, "y");
+  const y2Max = computeDualOverlayAxisMax(figure, "y2");
+
+  figure.layout.yaxis = {
+    ...(figure.layout.yaxis || {}),
+    range: [0, yMax],
+    autorange: false,
+    rangemode: "tozero",
+    automargin: false,
+  };
+  figure.layout.yaxis2 = {
+    ...(figure.layout.yaxis2 || {}),
+    overlaying: "y",
+    side: "right",
+    range: [0, y2Max],
+    autorange: false,
+    rangemode: "tozero",
+    showgrid: false,
+    automargin: false,
+  };
+  delete figure.layout.yaxis2.domain;
+  applyHourlyPrecipPanelGeometry(figure.layout);
+}
+
+function buildHourlyPrecipLayoutPatch(host, options = {}) {
+  const { chartHeight = null, includeAutosize = false } = options;
+  const figure = { data: host?.data, layout: host?.layout };
+
+  const patch = {
+    ...stableFrequencyAxisRelayout(host),
+    "margin.r": HOURLY_PRECIP_PANEL.margin.r,
+    "xaxis.domain": HOURLY_PRECIP_PANEL.xDomain.slice(),
+    "yaxis.range": [0, computeDualOverlayAxisMax(figure, "y")],
+    "yaxis.autorange": false,
+    "yaxis.rangemode": "tozero",
+    "yaxis2.range": [0, computeDualOverlayAxisMax(figure, "y2")],
+    "yaxis2.autorange": false,
+    "yaxis2.rangemode": "tozero",
+    "yaxis2.overlaying": "y",
+    "yaxis2.side": "right",
+    "yaxis2.automargin": false,
+    "yaxis2.domain": null,
+    "yaxis2.ticklabelstandoff": HOURLY_PRECIP_PANEL.y2TickStandoff,
+    "yaxis2.title.standoff": HOURLY_PRECIP_PANEL.y2TitleStandoff,
+  };
+
+  if (chartHeight != null) {
+    patch.height = chartHeight;
+  }
+  if (includeAutosize) {
+    patch.width = null;
+    patch.autosize = true;
+  }
+
+  return patch;
+}
+
+function applyHourlyPrecipLayout(host, options = {}) {
+  if (!host?.layout?.yaxis2 || !layoutUsesOverlayingY2(host.layout)) {
+    return Promise.resolve();
+  }
+
+  const patch = buildHourlyPrecipLayoutPatch(host, options);
+  if (!Object.keys(patch).length) {
+    return Promise.resolve();
+  }
+
+  return Plotly.relayout(host, patch).then(() => captureFrequencyAxisLabelLock(host));
+}
+
+function relayoutHourlyPrecipDualAxis(host, chartHeight = null) {
+  return applyHourlyPrecipLayout(host, { chartHeight });
+}
+
+async function finalizeHourlyPrecipMaximizedLayout(host, chartHeight = null) {
+  if (!host || host.dataset?.figureId !== "hourly_precip") {
+    return;
+  }
+
+  const resolvedHeight = chartHeight ?? (Number.parseFloat(host.style.height) || null);
+  await awaitLayoutSettle();
+  await Plotly.Plots.resize(host);
+  await applyHourlyPrecipLayout(host, {
+    chartHeight: resolvedHeight,
+    includeAutosize: true,
+  });
+  if (state.showErrorBars) {
+    await syncDualAxisPairedBarOverlayPositions(host);
+  }
 }
 
 function copyAxisDomain(axis = {}) {
@@ -2506,7 +3776,7 @@ function collectFrequencyPlotGeometryLock(layout = {}) {
     x: copyAxisDomain(layout.xaxis) || [0, 1],
     y: copyAxisDomain(layout.yaxis) || [0, 1],
   };
-  if (layout.yaxis2) {
+  if (layout.yaxis2 && !layoutUsesOverlayingY2(layout)) {
     domains.y2 = copyAxisDomain(layout.yaxis2) || [0, 1];
   }
 
@@ -2557,32 +3827,53 @@ function seedGroupedBarXAxisLockOnly(figure, figureId = "") {
 
 function seedGroupedBarInitialYRange(figure) {
   const traces = figure?.data || [];
-  let minValue = Number.POSITIVE_INFINITY;
-  let maxValue = Number.NEGATIVE_INFINITY;
+  const layout = figure.layout || {};
+  const hasY2 = Boolean(layout.yaxis2);
 
-  traces.forEach((trace) => {
-    if (!trace || trace.type !== "bar" || isErrorBarOverlayTrace(trace) || isStrictValueErrorOverlayTrace(trace)) {
-      return;
-    }
-    const bounds = traceBoundsWithError(trace, { includeLatentError: true });
-    if (!bounds) {
-      return;
-    }
-    minValue = Math.min(minValue, bounds.min);
-    maxValue = Math.max(maxValue, bounds.max);
-  });
+  function boundsForAxis(axisName) {
+    let minValue = Number.POSITIVE_INFINITY;
+    let maxValue = Number.NEGATIVE_INFINITY;
 
-  const finalized = finalizeAxisBounds(minValue, maxValue);
-  if (!finalized) {
-    return;
+    traces.forEach((trace) => {
+      if (!trace || trace.type !== "bar" || isErrorBarOverlayTrace(trace) || isStrictValueErrorOverlayTrace(trace)) {
+        return;
+      }
+      if (traceAxisName(trace) !== axisName) {
+        return;
+      }
+      const bounds = traceBoundsWithError(trace, { includeLatentError: true });
+      if (!bounds) {
+        return;
+      }
+      minValue = Math.min(minValue, bounds.min);
+      maxValue = Math.max(maxValue, bounds.max);
+    });
+
+    return finalizeAxisBounds(minValue, maxValue);
   }
 
-  figure.layout = figure.layout || {};
-  figure.layout.yaxis = {
-    ...(figure.layout.yaxis || {}),
-    range: [finalized.min, finalized.max],
-    autorange: false,
-  };
+  const yBounds = boundsForAxis("y");
+  if (yBounds) {
+    figure.layout = figure.layout || {};
+    figure.layout.yaxis = {
+      ...(layout.yaxis || {}),
+      range: [0, yBounds.max],
+      autorange: false,
+      rangemode: "tozero",
+    };
+  }
+
+  if (hasY2) {
+    const y2Bounds = boundsForAxis("y2");
+    if (y2Bounds) {
+      figure.layout.yaxis2 = {
+        ...(layout.yaxis2 || {}),
+        range: [0, y2Bounds.max],
+        autorange: false,
+        rangemode: "tozero",
+      };
+    }
+  }
 }
 
 function invalidateCanonicalGeometry(host) {
@@ -2637,9 +3928,12 @@ function prepareFrequencyFigureGeometry(figure, figureId = "") {
   }
 
   if (strictGroupedBarOverlayFigureIds.has(figureId)) {
+    const xDomain = figureId === "hourly_precip"
+      ? HOURLY_PRECIP_PANEL.xDomain.slice()
+      : [0, 1];
     layout.xaxis = {
       ...(layout.xaxis || {}),
-      domain: [0, 1],
+      domain: xDomain,
       anchor: "y",
       automargin: false,
     };
@@ -2654,11 +3948,17 @@ function prepareFrequencyFigureGeometry(figure, figureId = "") {
         ...layout.yaxis2,
         automargin: false,
       };
+      if (figureId === "hourly_precip") {
+        applyHourlyPrecipPanelGeometry(layout);
+      }
     }
     layout.margin = {
       ...(layout.margin || {}),
       l: Math.max(layout.margin?.l || 0, FREQUENCY_CHART_MIN_MARGIN_L),
       b: effectiveFrequencyMarginBottom({ layout }, layout.margin?.b),
+      ...(figureId === "hourly_precip"
+        ? { r: Math.max(layout.margin?.r || 0, HOURLY_PRECIP_PANEL.margin.r) }
+        : {}),
     };
     seedGroupedBarInitialYRange(figure);
     seedGroupedBarXAxisLockOnly(figure, figureId);
@@ -2709,12 +4009,17 @@ function readPlotGeometryFromHost(host) {
   const margin = copyMarginBox(layout.margin);
   margin.b = effectiveFrequencyMarginBottom({ layout }, margin.b);
   margin.l = Math.max(margin.l || 0, FREQUENCY_CHART_MIN_MARGIN_L);
+  if (usesDualAxisPairedBarOverlays(host)) {
+    margin.r = Math.max(margin.r || 0, HOURLY_PRECIP_PANEL.margin.r);
+  }
 
   const domains = {
-    x: [0, 1],
+    x: usesDualAxisPairedBarOverlays(host)
+      ? HOURLY_PRECIP_PANEL.xDomain.slice()
+      : [0, 1],
     y: [0, 1],
   };
-  if (layout.yaxis2) {
+  if (layout.yaxis2 && !layoutUsesOverlayingY2(layout)) {
     domains.y2 = copyAxisDomain(layout.yaxis2) || [0, 1];
   }
 
@@ -2790,25 +4095,44 @@ async function deleteStrictValueOverlayTraces(host) {
   await Plotly.deleteTraces(host, indices);
 }
 
-async function calibrateCanonicalPlotGeometry(host) {
+async function calibrateCanonicalPlotGeometry(host, options = {}) {
   if (!hostUsesCanonicalGroupedBarGeometry(host)) {
     return;
   }
-  if (hasCanonicalPlotGeometry(host)) {
+
+  const resizeOnly = options.mode === "resize";
+  const isDualAxisHourlyPrecip = usesDualAxisPairedBarOverlays(host);
+
+  if (isDualAxisHourlyPrecip && resizeOnly) {
+    await Plotly.Plots.resize(host);
+    await applyHourlyPrecipLayout(host, { includeAutosize: true });
+    if (state.showErrorBars) {
+      await syncDualAxisPairedBarOverlayPositions(host);
+    }
+    return;
+  }
+
+  if (hasCanonicalPlotGeometry(host) && !resizeOnly) {
     return;
   }
 
   // Capture reference frame from main bars only (no error-bar overlays).
-  await deleteStrictValueOverlayTraces(host);
+  if (!resizeOnly) {
+    await deleteStrictValueOverlayTraces(host);
+  }
 
   const hostMargin = host.layout?.margin || {};
   const calibrationRelayout = {
     ...buildPreCanonicalGeometryRelayout(host),
     "margin.l": FREQUENCY_CHART_MIN_MARGIN_L,
-    "margin.r": hostMargin.r ?? 32,
+    "margin.r": isDualAxisHourlyPrecip
+      ? HOURLY_PRECIP_PANEL.margin.r
+      : (hostMargin.r ?? 32),
     "margin.t": hostMargin.t ?? 36,
     "margin.b": effectiveFrequencyMarginBottom(host, hostMargin.b),
-    "xaxis.domain": [0, 1],
+    "xaxis.domain": isDualAxisHourlyPrecip
+      ? HOURLY_PRECIP_PANEL.xDomain.slice()
+      : [0, 1],
     "yaxis.domain": [0, 1],
     "xaxis.anchor": "y",
     "yaxis.anchor": "x",
@@ -2816,10 +4140,32 @@ async function calibrateCanonicalPlotGeometry(host) {
     "yaxis.automargin": false,
     "yaxis.rangemode": "tozero",
   };
-  const bounds = computeGroupedBarCalibrationAxisBounds(host, "y");
-  if (bounds) {
-    calibrationRelayout["yaxis.range"] = [bounds.min, bounds.max];
+  if (isDualAxisHourlyPrecip) {
+    calibrationRelayout["yaxis.range"] = [0, computeDualOverlayAxisMax({ data: host.data, layout: host.layout }, "y")];
     calibrationRelayout["yaxis.autorange"] = false;
+    calibrationRelayout["yaxis2.range"] = [0, computeDualOverlayAxisMax({ data: host.data, layout: host.layout }, "y2")];
+    calibrationRelayout["yaxis2.autorange"] = false;
+    calibrationRelayout["yaxis2.rangemode"] = "tozero";
+    calibrationRelayout["yaxis2.overlaying"] = "y";
+    calibrationRelayout["yaxis2.side"] = "right";
+    calibrationRelayout["yaxis2.domain"] = null;
+  } else {
+    const bounds = computeGroupedBarCalibrationAxisBounds(host, "y");
+    if (bounds) {
+      calibrationRelayout["yaxis.range"] = [0, bounds.max];
+      calibrationRelayout["yaxis.autorange"] = false;
+    }
+    if (layoutUsesOverlayingY2(host.layout)) {
+      const y2Bounds = computeGroupedBarCalibrationAxisBounds(host, "y2");
+      if (y2Bounds) {
+        calibrationRelayout["yaxis2.range"] = [0, y2Bounds.max];
+        calibrationRelayout["yaxis2.autorange"] = false;
+        calibrationRelayout["yaxis2.rangemode"] = "tozero";
+        calibrationRelayout["yaxis2.overlaying"] = "y";
+        calibrationRelayout["yaxis2.side"] = "right";
+      }
+      calibrationRelayout["yaxis2.domain"] = null;
+    }
   }
 
   if (Object.keys(calibrationRelayout).length) {
@@ -2835,9 +4181,20 @@ async function calibrateCanonicalPlotGeometry(host) {
     ...readPlotGeometryFromHost(host),
   };
 
-  await rebuildStrictValueErrorBarOverlays(host, { forceRebuild: state.showErrorBars });
-  await finishStrictValueErrorBarOverlays(host);
-  await awaitLayoutSettle();
+  if (!resizeOnly) {
+    await rebuildStrictValueErrorBarOverlays(host, { forceRebuild: state.showErrorBars });
+    await finishStrictValueErrorBarOverlays(host);
+    await awaitLayoutSettle();
+  }
+
+  if (isDualAxisHourlyPrecip) {
+    await applyHourlyPrecipLayout(host);
+    if (state.showErrorBars) {
+      await syncDualAxisPairedBarOverlayPositions(host);
+    }
+    return;
+  }
+
   await applyCanonicalGroupedBarRelayout(host);
 }
 
@@ -2895,13 +4252,21 @@ function sealCanonicalLayoutState(host) {
     }
   });
 
-  if (lock.domains.y2 && host.layout.yaxis2) {
+  if (lock.domains.y2 && host.layout.yaxis2 && !layoutUsesOverlayingY2(host.layout)) {
     host.layout.yaxis2 = {
       ...(host.layout.yaxis2 || {}),
       domain: lock.domains.y2.slice(),
       anchor: lock.anchors.y2,
       automargin: false,
     };
+  } else if (host.layout.yaxis2 && layoutUsesOverlayingY2(host.layout)) {
+    host.layout.yaxis2 = {
+      ...(host.layout.yaxis2 || {}),
+      overlaying: "y",
+      side: "right",
+      automargin: false,
+    };
+    delete host.layout.yaxis2.domain;
   }
 }
 
@@ -3107,9 +4472,10 @@ function buildGroupedBarLegendToggleLayoutPatch(host, projectedBounds) {
   }
 
   if (projectedBounds.y2 && host.layout?.yaxis2) {
-    layoutPatch["yaxis2.range"] = [projectedBounds.y2.min, projectedBounds.y2.max];
+    layoutPatch["yaxis2.range"] = [0, Number(projectedBounds.y2.max)];
     layoutPatch["yaxis2.autorange"] = false;
     layoutPatch["yaxis2.automargin"] = false;
+    layoutPatch["yaxis2.rangemode"] = "tozero";
   }
 
   if (hasCanonicalPlotGeometry(host)) {
@@ -3155,6 +4521,10 @@ function applyCanonicalGroupedBarLegendToggle(host, affectedIndices, nextVisibil
 function finalizeGroupedBarLegendToggle(host) {
   captureFrequencyAxisLabelLock(host);
   sealCanonicalLayoutState(host);
+  if (usesDualAxisPairedBarOverlays(host)) {
+    return applyHourlyPrecipLayout(host)
+      .then(() => syncDualAxisPairedBarOverlayPositions(host));
+  }
   return Promise.resolve();
 }
 
@@ -3192,12 +4562,14 @@ function buildResponsiveRangeRelayout(host) {
 }
 
 function pinGroupedBarYRangeBaseline(relayout) {
-  const range = relayout["yaxis.range"];
-  if (Array.isArray(range) && range.length === 2 && Number.isFinite(Number(range[1]))) {
-    relayout["yaxis.range"] = [0, Number(range[1])];
-    relayout["yaxis.autorange"] = false;
-    relayout["yaxis.rangemode"] = "tozero";
-  }
+  ["yaxis", "yaxis2"].forEach((layoutKey) => {
+    const range = relayout[`${layoutKey}.range`];
+    if (Array.isArray(range) && range.length === 2 && Number.isFinite(Number(range[1]))) {
+      relayout[`${layoutKey}.range`] = [0, Number(range[1])];
+      relayout[`${layoutKey}.autorange`] = false;
+      relayout[`${layoutKey}.rangemode`] = "tozero";
+    }
+  });
   return relayout;
 }
 
@@ -3234,28 +4606,41 @@ function buildCanonicalGroupedBarRelayout(host) {
 
   if (host.layout?.yaxis2) {
     relayout["yaxis2.automargin"] = false;
+    if (layoutUsesOverlayingY2(host.layout)) {
+      relayout["yaxis2.overlaying"] = "y";
+      relayout["yaxis2.side"] = "right";
+      relayout["yaxis2.domain"] = null;
+    }
   }
   return relayout;
 }
 
 function applyCanonicalGroupedBarRelayout(host) {
+  if (usesDualAxisPairedBarOverlays(host)) {
+    return applyHourlyPrecipLayout(host);
+  }
+
   const relayout = buildCanonicalGroupedBarRelayout(host);
   if (!Object.keys(relayout).length) {
     return Promise.resolve();
   }
 
   return Plotly.relayout(host, relayout)
-    .then(() => Plotly.relayout(host, relayout))
     .then(() => captureFrequencyAxisLabelLock(host));
 }
 
 function applyResponsiveAxisRange(host) {
-  if (!host || host?.layout?.polar) {
+  if (!host || hostHasFixedTopoAxisRange(host)) {
     return Promise.resolve();
   }
 
   if (host.dataset?.figureId === "scatter_wind_dewpt") {
     return relayoutScatterWindDewptAxes(host);
+  }
+
+  if (host.dataset?.figureId === "hourly_precip" && layoutUsesOverlayingY2(host.layout)) {
+    return applyHourlyPrecipLayout(host)
+      .then(() => syncDualAxisPairedBarOverlayPositions(host));
   }
 
   const rangeRelayout = buildResponsiveRangeRelayout(host);
@@ -3284,7 +4669,7 @@ async function refreshErrorBarsOnVisibleCharts() {
 
   await Promise.all(Array.from({ length: visibleCount }, async (_, idx) => {
     const host = els.charts[idx];
-    if (!host?.data?.length || host.layout?.polar) {
+    if (!hostSupportsErrorBarRefresh(host)) {
       return;
     }
 
@@ -3432,6 +4817,115 @@ function clearPlotErrorBars(host) {
   return Promise.all(restyles).then(() => undefined);
 }
 
+function usesDualAxisPairedBarOverlays(host) {
+  const figureId = host?.dataset?.figureId || "";
+  return dualAxisPairedBarOverlayFigureIds.has(figureId)
+    && layoutUsesOverlayingY2(host?.layout);
+}
+
+function buildDualAxisPairedBarScatterOverlay(host, trace, traceIndex, options = {}) {
+  const figureId = host?.dataset?.figureId || "";
+  const forceErrorVisible = Boolean(options.forceErrorVisible);
+  const yValues = numericArray(trace.y);
+  const xValues = valueArray(trace.x);
+  const count = Math.min(yValues.length, xValues.length || yValues.length);
+  if (count <= 1) {
+    return null;
+  }
+
+  const yStdArray = pointwiseStdArray(yValues).slice(0, count);
+  const yStd = representativeStd(yStdArray);
+  if (!yStdArray.some((v) => Number(v) > 0)) {
+    return null;
+  }
+
+  const fallbackX = (xValues.length ? xValues : Array.from({ length: count }, (_, i) => i)).slice(0, count);
+  const fallbackY = yValues.slice(0, count);
+  const points = resolvedBarTopPoints(host, trace, traceIndex);
+  const x = (points.x && points.x.length) ? points.x : fallbackX;
+  const y = (points.top && points.top.length) ? points.top : fallbackY;
+  const sourceVisible = isTraceVisible(trace);
+  const errorVisible = (forceErrorVisible || state.showErrorBars) && sourceVisible;
+
+  return {
+    type: "scatter",
+    mode: "markers",
+    x,
+    y,
+    xaxis: trace.xaxis,
+    yaxis: trace.yaxis,
+    showlegend: false,
+    hoverinfo: "skip",
+    cliponaxis: false,
+    visible: sourceVisible ? true : "legendonly",
+    marker: {
+      size: 2,
+      opacity: 0,
+      color: "rgba(0,0,0,0)",
+    },
+    error_y: {
+      type: "data",
+      array: yStdArray,
+      arrayminus: fallbackY.map((value, i) => {
+        const numericValue = Number(value);
+        if (!Number.isFinite(numericValue)) {
+          return 0;
+        }
+        const sd = Number(yStdArray[i]);
+        const eff = Number.isFinite(sd) ? sd : yStd;
+        return Math.min(eff, Math.max(0, numericValue));
+      }),
+      symmetric: false,
+      visible: errorVisible,
+      thickness: 1.8,
+      width: 5,
+      color: customErrorBarColor(trace, figureId),
+    },
+    meta: {
+      errorBarOverlay: true,
+      strictValueErrorOverlay: true,
+      dualAxisPairedBarOverlay: true,
+      sourceTrace: traceIndex,
+    },
+    legendgroup: trace.legendgroup || null,
+  };
+}
+
+function syncDualAxisPairedBarOverlayPositions(host) {
+  if (!usesDualAxisPairedBarOverlays(host)) {
+    return Promise.resolve();
+  }
+
+  const traces = host?.data || [];
+  const indices = [];
+  const xValues = [];
+  const yValues = [];
+
+  traces.forEach((trace, index) => {
+    if (!isStrictValueErrorOverlayTrace(trace)) {
+      return;
+    }
+    const sourceIndex = Number(trace?.meta?.sourceTrace);
+    if (!Number.isInteger(sourceIndex) || sourceIndex < 0 || sourceIndex >= traces.length) {
+      return;
+    }
+
+    const sourceTrace = traces[sourceIndex];
+    const points = resolvedBarTopPoints(host, sourceTrace, sourceIndex);
+    if (!points.x.length || !points.top.length) {
+      return;
+    }
+    indices.push(index);
+    xValues.push(points.x);
+    yValues.push(points.top);
+  });
+
+  if (!indices.length) {
+    return Promise.resolve();
+  }
+  return Plotly.restyle(host, { x: xValues, y: yValues }, indices);
+}
+
 function buildGroupedBarOverlayErrorY(host, sourceTrace) {
   const figureId = host?.dataset?.figureId || "";
   const yValues = numericArray(sourceTrace?.y);
@@ -3507,7 +5001,13 @@ function syncGroupedBarOverlayState(host) {
     restyles.push(Plotly.restyle(host, { error_y: errorYValues }, errorIndices));
   }
 
-  return restyles.length ? Promise.all(restyles) : Promise.resolve();
+  const positionSync = usesDualAxisPairedBarOverlays(host)
+    ? syncDualAxisPairedBarOverlayPositions(host)
+    : Promise.resolve();
+
+  return restyles.length
+    ? Promise.all(restyles).then(() => positionSync)
+    : positionSync;
 }
 
 function syncErrorBarOverlayVisibility(host) {
@@ -3591,7 +5091,8 @@ function buildStrictValueErrorOverlayTraces(host, options = {}) {
   const figureId = host?.dataset?.figureId || "";
   const forceErrorVisible = Boolean(options.forceErrorVisible);
   const isStackedBars = String(host?.layout?.barmode || "").toLowerCase() === "stack";
-  const useBarOverlaysForBars = strictGroupedBarOverlayFigureIds.has(figureId);
+  const useBarOverlaysForBars = strictGroupedBarOverlayFigureIds.has(figureId)
+    && !usesDualAxisPairedBarOverlays(host);
 
   if (isStackedBars && strictStackedBarOverlayFigureIds.has(figureId)) {
     const cumulativeByAxis = new Map();
@@ -3722,6 +5223,14 @@ function buildStrictValueErrorOverlayTraces(host, options = {}) {
       color: customErrorBarColor(trace, figureId),
     };
 
+    if (trace.type === "bar" && usesDualAxisPairedBarOverlays(host)) {
+      const overlay = buildDualAxisPairedBarScatterOverlay(host, trace, traceIndex, options);
+      if (overlay) {
+        overlays.push(overlay);
+      }
+      return;
+    }
+
     if (trace.type === "bar" && useBarOverlaysForBars) {
       overlays.push({
         type: "bar",
@@ -3834,7 +5343,11 @@ async function ensureGroupedBarOverlaySlots(host) {
 
   const deleteIndices = [];
   existingBySource.forEach((index, sourceIndex) => {
+    const desired = desiredOverlays.find((overlay) => overlay.meta.sourceTrace === sourceIndex);
+    const existing = host.data[index];
     if (!desiredSources.has(sourceIndex)) {
+      deleteIndices.push(index);
+    } else if (desired && existing?.type !== desired.type) {
       deleteIndices.push(index);
     }
   });
@@ -4827,7 +6340,12 @@ function relayoutScatterWindDewptAxes(host, chartHeight = null) {
 
 function applyPersistentAxisLock(figure, figureId) {
   const layout = figure?.layout || {};
-  if (layout.polar || usesResponsiveYAxis(figureId)) {
+  if (layout.polar || usesResponsiveYAxis(figureId) || figureId === "lightning_heatmap") {
+    return;
+  }
+
+  if (figureId === "hourly_precip" && layoutUsesOverlayingY2(layout)) {
+    enforceHourlyPrecipDualAxisLayout(figure);
     return;
   }
 
@@ -5196,8 +6714,13 @@ function appendFrequencyPlotGeometryRelayout(relayout, lock, host) {
   if (domains?.y) {
     relayout["yaxis.domain"] = domains.y.slice();
   }
-  if (domains?.y2 && host.layout?.yaxis2) {
+  if (domains?.y2 && host.layout?.yaxis2 && !layoutUsesOverlayingY2(host.layout)) {
     relayout["yaxis2.domain"] = domains.y2.slice();
+  }
+  if (host.layout?.yaxis2 && layoutUsesOverlayingY2(host.layout)) {
+    relayout["yaxis2.domain"] = null;
+    relayout["yaxis2.overlaying"] = "y";
+    relayout["yaxis2.side"] = "right";
   }
 
   const anchors = lock?.anchors;
@@ -5363,8 +6886,8 @@ function renderExternalLegend(host, legendHost, figure, section = state.displaye
 
 function getChartHeight(section) {
   const isWindSection = section === "wind";
-  const isExpandedSection = isWindSection || section === "precipitation";
-  
+  const isExpandedSection = isWindSection;
+
   const headerHeight = document.querySelector(".app-header")?.offsetHeight ?? 0;
   const controlsHeight = document.querySelector(".controls")?.offsetHeight ?? 0;
   const statusHeight = els.status.offsetHeight ?? 0;
@@ -5395,6 +6918,9 @@ function scheduleHostResize(host, options = {}) {
   if (!host) {
     return Promise.resolve();
   }
+  if (shouldSkipLightningHourlyTopoRelayout(host)) {
+    return Promise.resolve();
+  }
 
   const existingFrame = hostResizeFrames.get(host);
   if (existingFrame) {
@@ -5402,6 +6928,7 @@ function scheduleHostResize(host, options = {}) {
   }
 
   const recalibrateFrame = Boolean(options.recalibrateFrame);
+  const resizeOnly = options.mode === "resize";
 
   return new Promise((resolve) => {
     const frameId = requestAnimationFrame(() => {
@@ -5409,6 +6936,12 @@ function scheduleHostResize(host, options = {}) {
       Promise.resolve(Plotly.Plots.resize(host))
         .then(() => {
           if (hostUsesCanonicalGroupedBarGeometry(host)) {
+            if (usesDualAxisPairedBarOverlays(host) && (recalibrateFrame || resizeOnly)) {
+              if (recalibrateFrame) {
+                invalidateCanonicalGeometry(host);
+              }
+              return calibrateCanonicalPlotGeometry(host, { mode: "resize" });
+            }
             if (recalibrateFrame) {
               invalidateCanonicalGeometry(host);
               return calibrateCanonicalPlotGeometry(host)
@@ -5421,6 +6954,9 @@ function scheduleHostResize(host, options = {}) {
               .then(() => applyResponsiveAxisRange(host));
           }
           if (!hostUsesFrequencyAxisLabelLock(host)) {
+            if (isTopoMapFigure(host.dataset?.figureId || "")) {
+              return relayoutTopoMapPanel(host);
+            }
             return;
           }
           const relayout = stableFrequencyAxisRelayout(host);
@@ -5443,9 +6979,40 @@ function scheduleWindRoseResize(host) {
 
   return new Promise((resolve) => {
     requestAnimationFrame(() => {
-      Promise.resolve(Plotly.Plots.resize(host)).finally(resolve);
+      Promise.resolve(Plotly.Plots.resize(host))
+        .then(() => relayoutTopoMapPanel(host))
+        .finally(resolve);
     });
   });
+}
+
+async function refreshMaximizedChartLayout(host) {
+  if (!host) {
+    return;
+  }
+
+  if (host.dataset?.figureId === "hourly_precip") {
+    const chartHeight = Number.parseFloat(host.style.height) || null;
+    await finalizeHourlyPrecipMaximizedLayout(host, chartHeight);
+    return;
+  }
+
+  if (host.dataset?.figureId === "lightning_heatmap" && shouldUseHourlyLightningHeatmap()) {
+    teardownLightningOverlay();
+    await awaitLayoutSettle();
+    await relayoutTopoMapPanel(host);
+    await scheduleHostResize(host, { recalibrateFrame: true });
+    await awaitLayoutSettle();
+    await enterLightningHourlyOverlayCurrent(host);
+    return;
+  }
+
+  await awaitLayoutSettle();
+  await Plotly.relayout(host, { width: null, autosize: true });
+  if (isTopoMapFigure(host.dataset?.figureId || "")) {
+    await relayoutTopoMapPanel(host);
+  }
+  await scheduleHostResize(host, { recalibrateFrame: true });
 }
 
 function applyChartShellHeights(section = state.displayedSection) {
@@ -5465,28 +7032,37 @@ function applyChartShellHeights(section = state.displayedSection) {
 }
 
 async function drawCharts(figures, section = state.displayedSection) {
+  // Remove any stale lightning overlay before re-rendering the base charts; it is
+  // rebuilt afterwards when hourly mode is active.
+  teardownLightningOverlay();
   const renderFigures = figures.map(cloneFigurePayloadForRender);
   state.latestFigures = renderFigures;
   const isWindSection = section === "wind";
-  const isExpandedSection = section === "wind" || section === "precipitation";
+  const isExpandedSection = section === "wind";
   const chartHeight = applyChartShellHeights(section);
   const visibleFigures = renderFigures.slice(0, 4);
 
   // Keep maximize controls hidden until all chart renders complete.
 
   const icao = els.icao?.value || "";
+  const season = els.season?.value || "all";
   const renderPromises = visibleFigures.map((item, idx) => {
     const host = els.charts[idx];
     host.dataset.figureId = item.id || "";
     const { card, legend, shell } = chartUi[idx];
     card.classList.remove("hidden");
     const targetChartHeight = Number.parseFloat(host.style.height) || chartHeight;
+    const isMaximized = state.maximizedChartIndex === idx;
     const figure = item.figure;
     const isFrequencyFigure = frequencyFigureIds.has(item.id);
     const isWindRoseFigure = item.id === "wind_rose";
-    shell.classList.toggle("is-wind-rose-shell", isWindRoseFigure);
+    const isTopoMapShell = isTopoMapFigure(item.id);
+    shell.classList.toggle("is-wind-rose-shell", isTopoMapShell);
     shell.classList.toggle("is-scatter-wind-dewpt-shell", item.id === "scatter_wind_dewpt");
     shell.classList.toggle("is-temp-dewpoint-shell", item.id === "temp_dewpoint");
+    if (isTopoMapFigure(item.id)) {
+      applyTopoMapPanelLayout(figure, item.id, { chartHeight: targetChartHeight });
+    }
     if (isWindRoseFigure) {
       const layoutSnapshot = state.wrMode === "hourly" && state.windRoseLayoutRef[section]
         ? { ...state.windRoseLayoutRef[section], height: targetChartHeight }
@@ -5498,14 +7074,14 @@ async function drawCharts(figures, section = state.displayedSection) {
         state.windRoseLayoutRef[section] = extractWindRoseLayoutSnapshot(figure, section, targetChartHeight);
       }
     }
-    return preparePolarTerrainBackground(figure, icao).then(() => {
+    return prepareChartTerrainBackground(figure, icao, item.id).then(() => {
     figure.layout = figure.layout || {};
     figure.layout.legend = figure.layout.legend || {};
     figure.layout.showlegend = false;
     if (!isWindRoseFigure) {
       figure.layout.margin = {
         ...(figure.layout.margin || {}),
-        r: 32,
+        r: item.id === "hourly_precip" ? HOURLY_PRECIP_PANEL.margin.r : 32,
       };
     }
     applyStrictValueHoverTemplatesToFigure(figure, item.id || "");
@@ -5513,6 +7089,20 @@ async function drawCharts(figures, section = state.displayedSection) {
     enforceHourlyFrequencyAxis(figure, item.id || "");
     if (item.id === "temp_dewpoint") {
       enforceTempDewpointLayout(figure, targetChartHeight);
+    }
+    if (item.id === "hourly_precip") {
+      enforceHourlyPrecipDualAxisLayout(figure, targetChartHeight);
+    }
+    if (item.id === "lightning_heatmap") {
+      const hourlyScale = shouldUseHourlyLightningHeatmap(section) ? ensureLightningHourlyScale(icao, season) : null;
+      const scale = applyLightningHeatmapStyle(figure, {
+        icao,
+        season,
+        fixedScale: hourlyScale,
+      });
+      if (state.lhMode === "summary" && supportsLightningHeatmapHourly(icao) && scale) {
+        state.lightningHeatmapScaleRef = { ...scale };
+      }
     }
     prepareFrequencyFigureGeometry(figure, item.id || "");
     if (isFrequencyFigure || item.id === "fog_cloud_joint") {
@@ -5540,17 +7130,43 @@ async function drawCharts(figures, section = state.displayedSection) {
     if (isExpandedSection && !isWindRoseFigure) {
       figure.layout.height = targetChartHeight;
     }
+    const usesDedicatedChartHeight = isWindRoseFigure
+      || isFrequencyFigure
+      || item.id === "fog_cloud_joint"
+      || item.id === "temp_dewpoint"
+      || item.id === "scatter_wind_dewpt"
+      || isExpandedSection;
+    if (!usesDedicatedChartHeight) {
+      figure.layout.height = targetChartHeight;
+      delete figure.layout.width;
+    }
+    if (isMaximized) {
+      figure.layout.autosize = true;
+      delete figure.layout.width;
+    }
     applyChartLegendVisibilityToFigure(figure, item.id);
+    const skipHourlyPrecipMaximizePipeline = isMaximized && item.id === "hourly_precip";
+    const lockLightningHourlyPlot = item.id === "lightning_heatmap" && shouldUseHourlyLightningHeatmap(section);
     return Plotly.react(host, figure.data || [], figure.layout || {}, {
       displayModeBar: false,
-      responsive: true,
+      responsive: !lockLightningHourlyPlot,
     }).then(() => {
       return applyHostErrorBars(host)
         .then(() => rebuildStackErrorBarOverlays(host))
         .then(() => rebuildStrictValueErrorBarOverlays(host))
         .then(() => finishStrictValueErrorBarOverlays(host))
-        .then(() => calibrateCanonicalPlotGeometry(host))
-        .then(() => applyResponsiveAxisRange(host))
+        .then(() => {
+          if (skipHourlyPrecipMaximizePipeline) {
+            return Promise.resolve();
+          }
+          return calibrateCanonicalPlotGeometry(host);
+        })
+        .then(() => {
+          if (skipHourlyPrecipMaximizePipeline) {
+            return Promise.resolve();
+          }
+          return applyResponsiveAxisRange(host);
+        })
         .then(() => {
       renderExternalLegend(host, legend, item.figure, section, item.id);
       const maybeSync = item.id === "cloud_distribution" ? syncFogWindHoverTemplate(host) : Promise.resolve();
@@ -5562,6 +7178,32 @@ async function drawCharts(figures, section = state.displayedSection) {
         }
         if (isScatterWindDewpt) {
           return relayoutScatterWindDewptAxes(host, targetChartHeight);
+        }
+        if (item.id === "lightning_heatmap") {
+          const meta = item.figure?.layout?.meta || {};
+          const activeScaleRef = shouldUseHourlyLightningHeatmap(section)
+            ? ensureLightningHourlyScale(icao, season)
+            : state.lightningHeatmapScaleRef;
+          const scale = activeScaleRef || {
+            zmin: Number(host?.data?.[0]?.zmin) || Number(meta.lightningZmin) || 0,
+            zmax: Number(host?.data?.[0]?.zmax) || Number(meta.lightningZmax) || 1,
+          };
+          const enterOverlay = shouldUseHourlyLightningHeatmap(section) && !isMaximized;
+          return finalizeLightningHeatmapPostRender(host, scale, {
+            icao,
+            captureSummary: state.lhMode === "summary" && supportsLightningHeatmapHourly(icao),
+            pinHourly: false,
+          }).then(() => {
+            // Maximized hourly builds its overlay from refreshMaximizedChartLayout
+            // after the maximize settle; default hourly enters it here.
+            if (enterOverlay) {
+              return enterLightningHourlyOverlayCurrent(host);
+            }
+            return undefined;
+          });
+        }
+        if (isTopoMapFigure(item.id)) {
+          return relayoutTopoMapPanel(host).then(() => scheduleHostResize(host));
         }
         return scheduleHostResize(host);
       });
@@ -5587,6 +7229,16 @@ async function drawCharts(figures, section = state.displayedSection) {
   applyMaximizedChartState();
   updateChartToolbars(section);
 
+  if (Number.isInteger(state.maximizedChartIndex) && state.maximizedChartIndex < visibleFigures.length) {
+    const maximizedHost = els.charts[state.maximizedChartIndex];
+    if (maximizedHost.dataset?.figureId === "hourly_precip") {
+      const chartHeight = Number.parseFloat(maximizedHost.style.height) || null;
+      await finalizeHourlyPrecipMaximizedLayout(maximizedHost, chartHeight);
+    } else {
+      await refreshMaximizedChartLayout(maximizedHost);
+    }
+  }
+
   const windRoseIndex = visibleFigures.findIndex((item) => item.id === "wind_rose");
   if (windRoseIndex >= 0 && windRoseToolbarSections().has(section)) {
     await scheduleWindRoseResize(els.charts[windRoseIndex]);
@@ -5599,18 +7251,428 @@ let fetchDebounceTimer = null;
 let chartContainerResizeObserversInitialized = false;
 const DRIVER_FETCH_DEBOUNCE_MS = 320;
 
-const POLAR_BACKGROUND_SCALE = 1.1;
-const POLAR_BACKGROUND_OPACITY = 0.7;
-const WIND_ROSE_SECTION_LAYOUT = {
-  overview: {
-    margin: { l: 32, r: 32, t: 54, b: 28 },
-    polar: { domain: { x: [0, 1], y: [0.02, 0.98] } },
-  },
-  wind: {
-    margin: { l: 40, r: 40, t: 56, b: 36 },
-    polar: { domain: { x: [0.12, 0.88], y: [0.12, 0.88] } },
-  },
+const TOPO_MAP_PANEL = {
+  margin: { l: 36, r: 36, t: 48, b: 22 },
+  plotDomain: { x: [0.08, 0.92], y: [0.06, 0.94] },
+  backgroundScale: 1.1,
+  backgroundOpacity: 0.7,
 };
+
+const POLAR_TOPO_FIGURE_IDS = new Set([
+  "wind_rose",
+  "precip_split",
+  "cloud_distribution",
+  "radial_scatter_dust",
+]);
+
+const topoMapFigureIds = new Set([
+  ...POLAR_TOPO_FIGURE_IDS,
+  "lightning_heatmap",
+]);
+
+const POLAR_BACKGROUND_SCALE = TOPO_MAP_PANEL.backgroundScale;
+const POLAR_BACKGROUND_OPACITY = TOPO_MAP_PANEL.backgroundOpacity;
+const CARTESIAN_TOPO_OPACITY = TOPO_MAP_PANEL.backgroundOpacity;
+const LIGHTNING_HEATMAP_COLORSCALE = [
+  [0, "rgba(0,0,0,0)"],
+  [0.15, "rgba(255,210,170,0.28)"],
+  [0.35, "rgba(255,130,60,0.52)"],
+  [0.55, "rgba(240,60,0,0.72)"],
+  [0.75, "rgba(220,20,0,0.86)"],
+  [1, "rgba(170,0,0,0.95)"],
+];
+const LIGHTNING_HEATMAP_RADIUS_KM = 30;
+const LIGHTNING_HEATMAP_EXTENT_KM = 60;
+const LIGHTNING_HEATMAP_GRID = 48;
+const LIGHTNING_HEATMAP_COLOR_PERCENTILE = 95;
+// In hourly mode the raw range made cells read as near-saturated. Doubling the
+// upper limit stretches the colour ramp so typical hourly counts sit lower on the
+// scale with more headroom toward the peak.
+const LIGHTNING_HOURLY_SCALE_HEADROOM = 2;
+const LIGHTNING_HEATMAP_OPACITY = 0.5;
+const LIGHTNING_HEATMAP_RING_RADII_KM = [8, 16];
+const TOPO_ZOOM_LEVEL = 9;
+const TOPO_CROP_PX = 512;
+const EARTH_RADIUS_M = 6378137;
+function isTopoMapFigure(figureId = "") {
+  return topoMapFigureIds.has(figureId);
+}
+
+function isPolarTopoFigureId(figureId = "") {
+  return POLAR_TOPO_FIGURE_IDS.has(figureId);
+}
+
+function applyTopoMapPanelLayout(figure, figureId = "", options = {}) {
+  if (!figure?.layout || !isTopoMapFigure(figureId)) {
+    return;
+  }
+
+  const { chartHeight = null } = options;
+  figure.layout.margin = { ...TOPO_MAP_PANEL.margin };
+  if (chartHeight != null) {
+    figure.layout.height = chartHeight;
+  }
+  delete figure.layout.width;
+
+  const domainX = TOPO_MAP_PANEL.plotDomain.x.slice();
+  const domainY = TOPO_MAP_PANEL.plotDomain.y.slice();
+
+  if (figureId === "lightning_heatmap") {
+    figure.layout.xaxis = {
+      ...(figure.layout.xaxis || {}),
+      domain: domainX,
+      scaleanchor: "y",
+      scaleratio: 1,
+      automargin: false,
+    };
+    figure.layout.yaxis = {
+      ...(figure.layout.yaxis || {}),
+      domain: domainY,
+      automargin: false,
+    };
+    enforceLightningHeatmapTopoAxis(figure);
+    const trace = (figure.data || []).find((entry) => String(entry?.type || "").toLowerCase() === "heatmap");
+    if (trace) {
+      trace.colorbar = {
+        ...(trace.colorbar || {}),
+        x: 1.02,
+        xanchor: "left",
+        len: 0.75,
+        y: 0.5,
+        yanchor: "middle",
+      };
+    }
+    return;
+  }
+
+  figure.layout.polar = {
+    ...(figure.layout.polar || {}),
+    bgcolor: figure.layout.polar?.bgcolor || "rgba(0,0,0,0)",
+    domain: { x: domainX, y: domainY },
+  };
+}
+
+function buildTopoMapPanelRelayout(host) {
+  const figureId = host?.dataset?.figureId || "";
+  if (!isTopoMapFigure(figureId)) {
+    return {};
+  }
+
+  const domainX = TOPO_MAP_PANEL.plotDomain.x.slice();
+  const domainY = TOPO_MAP_PANEL.plotDomain.y.slice();
+  const relayout = {
+    "margin.l": TOPO_MAP_PANEL.margin.l,
+    "margin.r": TOPO_MAP_PANEL.margin.r,
+    "margin.t": TOPO_MAP_PANEL.margin.t,
+    "margin.b": TOPO_MAP_PANEL.margin.b,
+  };
+
+  if (figureId === "lightning_heatmap") {
+    Object.assign(relayout, {
+      "xaxis.domain": domainX,
+      "yaxis.domain": domainY,
+    });
+    const meta = host?.layout?.meta || {};
+    const halfExtent = Number(meta.topoExtentKm) / 2;
+    if (Number.isFinite(halfExtent) && halfExtent > 0) {
+      relayout["xaxis.range"] = [-halfExtent, halfExtent];
+      relayout["yaxis.range"] = [-halfExtent, halfExtent];
+      relayout["xaxis.autorange"] = false;
+      relayout["yaxis.autorange"] = false;
+      relayout["xaxis.tickmode"] = "array";
+      relayout["xaxis.tickvals"] = [0];
+      relayout["xaxis.ticktext"] = [""];
+      relayout["yaxis.tickmode"] = "array";
+      relayout["yaxis.tickvals"] = [0];
+      relayout["yaxis.ticktext"] = [""];
+    }
+    return relayout;
+  }
+
+  relayout["polar.domain.x"] = domainX;
+  relayout["polar.domain.y"] = domainY;
+  return relayout;
+}
+
+function relayoutTopoMapPanel(host) {
+  const patch = buildTopoMapPanelRelayout(host);
+  if (!host || !Object.keys(patch).length) {
+    return Promise.resolve();
+  }
+
+  return Plotly.relayout(host, patch).then(() => {
+    if (!host.layout?.polar || !Array.isArray(host.layout.images) || !host.layout.images.length) {
+      return;
+    }
+    alignPolarBackgroundImages({ layout: host.layout }, TOPO_MAP_PANEL.backgroundScale);
+    const images = host.layout.images;
+    const imagePatch = {};
+    images.forEach((image, index) => {
+      imagePatch[`images[${index}].x`] = image.x;
+      imagePatch[`images[${index}].y`] = image.y;
+      imagePatch[`images[${index}].sizex`] = image.sizex;
+      imagePatch[`images[${index}].sizey`] = image.sizey;
+    });
+    if (Object.keys(imagePatch).length) {
+      return Plotly.relayout(host, imagePatch);
+    }
+  });
+}
+
+function lightningColorbarDtick(zmin, zmax) {
+  const span = Math.max(1, (Number(zmax) || 1) - (Number(zmin) || 0));
+  const targetTicks = 5;
+  const raw = span / targetTicks;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const normalized = raw / magnitude;
+  let step = magnitude;
+  if (normalized <= 1) {
+    step = magnitude;
+  } else if (normalized <= 2) {
+    step = 2 * magnitude;
+  } else if (normalized <= 5) {
+    step = 5 * magnitude;
+  } else {
+    step = 10 * magnitude;
+  }
+  return step;
+}
+
+function lightningHeatmapColorRange(zGrid, { percentile = LIGHTNING_HEATMAP_COLOR_PERCENTILE } = {}) {
+  const positives = [];
+  (zGrid || []).forEach((row) => {
+    (Array.isArray(row) ? row : [row]).forEach((value) => {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0) {
+        positives.push(numeric);
+      }
+    });
+  });
+  if (!positives.length) {
+    return { zmin: 0, zmax: 1 };
+  }
+
+  positives.sort((a, b) => a - b);
+  const zmin = positives[0];
+  const zpeak = positives[positives.length - 1];
+  const rank = Math.min(
+    positives.length - 1,
+    Math.max(0, Math.ceil((percentile / 100) * positives.length) - 1),
+  );
+  let zmax = positives[rank];
+  zmax = Math.max(zmin + 1, Math.min(zmax, zpeak));
+  if (zmax >= zpeak * 0.98) {
+    zmax = zpeak;
+  }
+  return { zmin, zmax };
+}
+
+function applyLightningHeatmapRingOverlays(figure) {
+  figure.layout = figure.layout || {};
+  const radii = LIGHTNING_HEATMAP_RING_RADII_KM;
+  const nonRingShapes = (figure.layout.shapes || []).filter(
+    (shape) => !(shape?.type === "circle" && shape?.xref === "x" && shape?.yref === "y"),
+  );
+  const ringShapes = radii.map((radius) => ({
+    type: "circle",
+    xref: "x",
+    yref: "y",
+    x0: -radius,
+    y0: -radius,
+    x1: radius,
+    y1: radius,
+    line: { color: "rgba(255,255,255,0.9)", width: 1.5 },
+    fillcolor: "rgba(0,0,0,0)",
+  }));
+  figure.layout.shapes = [...ringShapes, ...nonRingShapes];
+  figure.layout.annotations = (figure.layout.annotations || []).filter(
+    (entry) => !(entry?.xref === "x" && entry?.yref === "y" && radii.includes(Number(entry?.y))),
+  );
+}
+
+function lightningHeatmapGeometry(meta = {}) {
+  const radiusKm = Number(meta.lightningRadiusKm) > 0 ? Number(meta.lightningRadiusKm) : LIGHTNING_HEATMAP_RADIUS_KM;
+  const extentKm = Number(meta.lightningExtentKm) > 0 ? Number(meta.lightningExtentKm) : LIGHTNING_HEATMAP_EXTENT_KM;
+  const grid = LIGHTNING_HEATMAP_GRID;
+  const half = extentKm / 2;
+  const cellSize = extentKm / grid;
+  const halfCell = cellSize / 2;
+  const centers = Array.from({ length: grid }, (_, idx) => -half + (idx + 0.5) * cellSize);
+  return { radiusKm, extentKm, grid, half, cellSize, halfCell, centers };
+}
+
+function cellIntersectsLightningDisk(xc, yc, halfCell, radiusKm) {
+  const dx = Math.max(Math.abs(xc) - halfCell, 0);
+  const dy = Math.max(Math.abs(yc) - halfCell, 0);
+  return Math.hypot(dx, dy) <= radiusKm + 1e-6;
+}
+
+function oldHeatmapCellValue(oldX, oldY, oldZ, xc, yc, tolerance) {
+  for (let j = 0; j < oldY.length; j += 1) {
+    if (Math.abs(Number(oldY[j]) - yc) > tolerance) {
+      continue;
+    }
+    const row = Array.isArray(oldZ[j]) ? oldZ[j] : [oldZ[j]];
+    for (let i = 0; i < oldX.length; i += 1) {
+      if (Math.abs(Number(oldX[i]) - xc) > tolerance) {
+        continue;
+      }
+      const value = Number(row[i]);
+      return Number.isFinite(value) && value > 0 ? value : null;
+    }
+  }
+  return null;
+}
+
+function normalizeLightningHeatmapTrace(trace, figure) {
+  const meta = figure?.layout?.meta || {};
+  const geom = lightningHeatmapGeometry(meta);
+  const oldX = (trace.x || []).map(Number);
+  const oldY = (trace.y || []).map(Number);
+  const oldZ = trace.z || [];
+  const oldCellSize = oldX.length >= 2 ? Math.abs(oldX[1] - oldX[0]) : geom.cellSize;
+  const tolerance = oldCellSize / 2 + 1e-3;
+
+  trace.x = [...geom.centers];
+  trace.y = [...geom.centers];
+  trace.z = geom.centers.map((yc) => geom.centers.map((xc) => {
+    if (!cellIntersectsLightningDisk(xc, yc, geom.halfCell, geom.radiusKm)) {
+      return null;
+    }
+    return oldHeatmapCellValue(oldX, oldY, oldZ, xc, yc, tolerance);
+  }));
+  return geom;
+}
+
+function applyLightningHeatmapStyle(figure, { icao = "", season = "all", fixedScale = null } = {}) {
+  const trace = (figure?.data || []).find((entry) => String(entry?.type || "").toLowerCase() === "heatmap");
+  if (!trace || !Array.isArray(trace.z)) {
+    return null;
+  }
+
+  const geom = normalizeLightningHeatmapTrace(trace, figure);
+
+  let zmax = 0;
+  trace.z = trace.z.map((row) => {
+    const values = Array.isArray(row) ? row : [row];
+    return values.map((value) => {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric <= 0) {
+        return null;
+      }
+      zmax = Math.max(zmax, numeric);
+      return numeric;
+    });
+  });
+
+  const { zmin: computedZmin, zmax: computedZmax } = lightningHeatmapColorRange(trace.z);
+  const metaZmin = Number(figure?.layout?.meta?.lightningZmin);
+  const metaZmax = Number(figure?.layout?.meta?.lightningZmax);
+  let resolvedZmin = computedZmin > 0 ? computedZmin : (Number.isFinite(metaZmin) ? metaZmin : 0);
+  let resolvedZmax = computedZmax > 1 ? computedZmax : (Number.isFinite(metaZmax) && metaZmax > 0 ? metaZmax : 1);
+  if (fixedScale && Number.isFinite(Number(fixedScale.zmax)) && Number(fixedScale.zmax) > 0) {
+    resolvedZmin = Number(fixedScale.zmin) || 0;
+    resolvedZmax = Number(fixedScale.zmax);
+  }
+  if (!zmax && resolvedZmax > 0) {
+    zmax = resolvedZmax;
+  }
+  if (!zmax) {
+    zmax = 1;
+  }
+
+  trace.zmin = resolvedZmin;
+  trace.zmax = resolvedZmax;
+  trace.zauto = false;
+  trace.showscale = true;
+  trace.hoverongaps = false;
+  trace.colorscale = LIGHTNING_HEATMAP_COLORSCALE;
+  trace.opacity = LIGHTNING_HEATMAP_OPACITY;
+  const dtick = lightningColorbarDtick(resolvedZmin, resolvedZmax);
+  trace.colorbar = {
+    ...(trace.colorbar || {}),
+    title: { text: "Strike count" },
+    tickmode: "linear",
+    tick0: Math.floor(resolvedZmin / dtick) * dtick,
+    dtick,
+    x: 1.02,
+    xanchor: "left",
+    y: 0.5,
+    yanchor: "middle",
+    len: 0.75,
+  };
+
+  figure.layout = figure.layout || {};
+  const scaleToken = fixedScale
+    ? String(Math.round(resolvedZmax))
+    : `${String(Math.round(resolvedZmin))}-${String(Math.round(resolvedZmax))}`;
+  figure.layout.uirevision = [
+    "lightning",
+    String(icao || "").trim().toUpperCase(),
+    String(season || "all"),
+    fixedScale ? "hourly" : "summary",
+    String(Math.round(geom.radiusKm)),
+    scaleToken,
+  ].join("::");
+
+  applyLightningHeatmapRingOverlays(figure);
+
+  return { zmin: resolvedZmin, zmax: resolvedZmax };
+}
+
+function enforceLightningHeatmapTopoAxis(figure) {
+  const meta = figure?.layout?.meta || {};
+  const displayExtentKm = Number(meta.topoExtentKm);
+  if (!Number.isFinite(displayExtentKm) || displayExtentKm <= 0) {
+    return;
+  }
+
+  const halfExtent = displayExtentKm / 2;
+  figure.layout = figure.layout || {};
+  figure.layout.xaxis = {
+    ...(figure.layout.xaxis || {}),
+    range: [-halfExtent, halfExtent],
+    scaleanchor: "y",
+    scaleratio: 1,
+    autorange: false,
+    tickmode: "array",
+    tickvals: [0],
+    ticktext: [""],
+  };
+  figure.layout.yaxis = {
+    ...(figure.layout.yaxis || {}),
+    range: [-halfExtent, halfExtent],
+    autorange: false,
+    tickmode: "array",
+    tickvals: [0],
+    ticktext: [""],
+  };
+}
+
+function restyleLightningHeatmapScale(host, { zmin = 0, zmax = 1 } = {}) {
+  const indices = lightningHeatmapTraceIndices(host);
+  if (!indices.length) {
+    return Promise.resolve();
+  }
+  if (indices.length >= 2) {
+    const dataIndex = indices[0];
+    const chromeIndex = indices[indices.length - 1];
+    const resolvedMin = Number(zmin) || 0;
+    const resolvedMax = Math.max(resolvedMin + 1, Number(zmax) || 1);
+    const dataPatch = {
+      zmin: [resolvedMin],
+      zmax: [resolvedMax],
+      zauto: [false],
+      colorscale: [LIGHTNING_HEATMAP_COLORSCALE],
+      showscale: [false],
+    };
+    return Promise.all([
+      Plotly.restyle(host, dataPatch, [dataIndex]),
+      Plotly.restyle(host, lightningHeatmapRestylePatch(null, { zmin: resolvedMin, zmax: resolvedMax }), [chromeIndex]),
+    ]);
+  }
+  return Plotly.restyle(host, lightningHeatmapRestylePatch(null, { zmin, zmax }), [indices[0]]);
+}
 
 function windRoseRadialMax(figure) {
   const sumsByTheta = new Map();
@@ -5650,41 +7712,28 @@ function windRoseRadialRange(maxValue) {
 }
 
 function extractWindRoseLayoutSnapshot(figure, section, chartHeight = null) {
-  const defaults = WIND_ROSE_SECTION_LAYOUT[section] || WIND_ROSE_SECTION_LAYOUT.overview;
   const radialMax = windRoseRadialMax(figure);
 
   return {
-    margin: { ...defaults.margin },
+    margin: { ...TOPO_MAP_PANEL.margin },
     height: chartHeight ?? figure?.layout?.height,
     polarDomain: {
-      x: [...defaults.polar.domain.x],
-      y: [...defaults.polar.domain.y],
+      x: TOPO_MAP_PANEL.plotDomain.x.slice(),
+      y: TOPO_MAP_PANEL.plotDomain.y.slice(),
     },
     radialRange: windRoseRadialRange(radialMax),
     radialMax,
   };
 }
 
-function applyWindRoseLayout(figure, section, snapshot = null) {
-  if (!figure?.layout) {
+function applyWindRoseRadialLayout(figure) {
+  if (!figure?.layout?.polar) {
     return;
   }
 
-  const defaults = WIND_ROSE_SECTION_LAYOUT[section] || WIND_ROSE_SECTION_LAYOUT.overview;
   const radialRange = windRoseRadialRange(windRoseRadialMax(figure));
-
-  figure.layout.margin = { ...(snapshot?.margin || defaults.margin) };
-  delete figure.layout.width;
-  if (snapshot?.height != null) {
-    figure.layout.height = snapshot.height;
-  }
   figure.layout.polar = {
     ...(figure.layout.polar || {}),
-    bgcolor: figure.layout.polar?.bgcolor || "rgba(0,0,0,0)",
-    domain: {
-      x: [...defaults.polar.domain.x],
-      y: [...defaults.polar.domain.y],
-    },
     radialaxis: {
       ...(figure.layout.polar?.radialaxis || {}),
       autorange: false,
@@ -5696,6 +7745,18 @@ function applyWindRoseLayout(figure, section, snapshot = null) {
       period: figure.layout.polar?.angularaxis?.period ?? 360,
     },
   };
+}
+
+function applyWindRoseLayout(figure, section, snapshot = null) {
+  if (!figure?.layout) {
+    return;
+  }
+
+  delete figure.layout.width;
+  if (snapshot?.height != null) {
+    figure.layout.height = snapshot.height;
+  }
+  applyWindRoseRadialLayout(figure);
 }
 
 function isWindRoseChartHost(host) {
@@ -5797,6 +7858,12 @@ async function preparePolarTerrainBackground(figure, icao) {
     return;
   }
 
+  if (state.liteMode) {
+    figure.layout.images = (figure.layout.images || []).filter(
+      (image) => !(image?.xref === "paper" && image?.yref === "paper"),
+    );
+  }
+
   if (!polarFigureHasTopoImage(figure)) {
     try {
       const topoUrl = await loadAirportTopo(icao);
@@ -5810,6 +7877,102 @@ async function preparePolarTerrainBackground(figure, icao) {
   alignPolarBackgroundImages(figure);
 }
 
+function topoCropExtentKmFromLat(latDeg, cropPx = TOPO_CROP_PX, zoom = TOPO_ZOOM_LEVEL) {
+  const latRad = (Number(latDeg) || 0) * (Math.PI / 180);
+  const metersPerPixel = Math.cos(latRad) * 2 * Math.PI * EARTH_RADIUS_M / (256 * (2 ** zoom));
+  return (cropPx * metersPerPixel) / 1000;
+}
+
+function cartesianFigureHasTopoImage(figure) {
+  const images = figure?.layout?.images;
+  return Array.isArray(images) && images.some((image) => {
+    return image?.xref === "x" && image?.yref === "y" && typeof image?.source === "string" && image.source.length > 0;
+  });
+}
+
+function injectCartesianTopoBackground(figure, source, extentKm, { opacity = CARTESIAN_TOPO_OPACITY } = {}) {
+  if (!figure?.layout || !source || !Number.isFinite(extentKm) || extentKm <= 0) {
+    return;
+  }
+
+  const existing = Array.isArray(figure.layout.images) ? figure.layout.images : [];
+  const overlays = existing.filter((image) => image?.xref !== "x" || image?.yref !== "y");
+  figure.layout.images = [
+    {
+      source,
+      xref: "x",
+      yref: "y",
+      x: 0,
+      y: 0,
+      sizex: extentKm,
+      sizey: extentKm,
+      xanchor: "center",
+      yanchor: "middle",
+      sizing: "stretch",
+      layer: "below",
+      opacity,
+    },
+    ...overlays,
+  ];
+}
+
+async function prepareCartesianTopoBackground(figure, icao, axisExtentKm = 24, { opacity = CARTESIAN_TOPO_OPACITY } = {}) {
+  if (!figure?.layout?.xaxis && !figure?.layout?.yaxis) {
+    return;
+  }
+
+  if (state.liteMode) {
+    figure.layout.images = (figure.layout.images || []).filter(
+      (image) => !(image?.xref === "x" && image?.yref === "y"),
+    );
+  }
+
+  const meta = figure.layout.meta || {};
+  const cropExtentKm = Number(meta.topoCropExtentKm) || topoCropExtentKmFromLat(meta.airportLat);
+  const displayExtentKm = Number(meta.topoExtentKm) || Number(axisExtentKm) || 24;
+
+  if (!cartesianFigureHasTopoImage(figure)) {
+    try {
+      const topoUrl = await loadAirportTopo(icao);
+      injectCartesianTopoBackground(figure, topoUrl, cropExtentKm, { opacity });
+    } catch (error) {
+      console.warn(`Failed to load cartesian topo for ${icao}:`, error);
+      return;
+    }
+  }
+
+  const halfExtent = displayExtentKm / 2;
+  figure.layout.xaxis = {
+    ...(figure.layout.xaxis || {}),
+    range: [-halfExtent, halfExtent],
+    scaleanchor: "y",
+    scaleratio: 1,
+    autorange: false,
+    tickmode: "array",
+    tickvals: [0],
+    ticktext: [""],
+  };
+  figure.layout.yaxis = {
+    ...(figure.layout.yaxis || {}),
+    range: [-halfExtent, halfExtent],
+    autorange: false,
+    tickmode: "array",
+    tickvals: [0],
+    ticktext: [""],
+  };
+}
+
+async function prepareChartTerrainBackground(figure, icao, figureId = "") {
+  if (!isPolarTopoFigureId(figureId) && figureId !== "lightning_heatmap") {
+    return;
+  }
+  if (figureId === "lightning_heatmap") {
+    const extentKm = Number(figure?.layout?.meta?.topoExtentKm) || 24;
+    return prepareCartesianTopoBackground(figure, icao, extentKm, { opacity: TOPO_MAP_PANEL.backgroundOpacity });
+  }
+  return preparePolarTerrainBackground(figure, icao);
+}
+
 function windRoseToolbarSections() {
   return new Set(["overview", "wind"]);
 }
@@ -5818,13 +7981,14 @@ function shouldUseHourlyWindRose(section = state.requestedSection) {
   return windRoseToolbarSections().has(section) && state.wrMode === "hourly";
 }
 
-function resetDefaultLegendTraceVisibility(figure) {
+function resetDefaultLegendTraceVisibility(figure, figureId = "") {
+  const defaults = defaultLegendTraceVisibilityByFigure[figureId] || {};
   (figure?.data || []).forEach((trace) => {
     const name = String(trace?.name || "").trim();
     if (!name || trace?.showlegend === false) {
       return;
     }
-    trace.visible = true;
+    trace.visible = Object.hasOwn(defaults, name) ? defaults[name] : true;
   });
 }
 
@@ -5833,7 +7997,8 @@ function cloneFigurePayloadForRender(item) {
     return item;
   }
   const clone = JSON.parse(JSON.stringify(item));
-  resetDefaultLegendTraceVisibility(clone.figure);
+  normalizeThunderLegendLabels(clone.figure, item.id);
+  resetDefaultLegendTraceVisibility(clone.figure, item.id);
   return clone;
 }
 
@@ -5880,10 +8045,19 @@ function applyChartLegendVisibilityToFigure(figure, figureId = "") {
   }
   (figure?.data || []).forEach((trace) => {
     const name = String(trace?.name || "").trim();
-    if (!name || !Object.hasOwn(stored, name)) {
+    if (!name) {
       return;
     }
-    trace.visible = stored[name];
+    if (Object.hasOwn(stored, name)) {
+      trace.visible = stored[name];
+      return;
+    }
+    if (thunderLegendFigureIds.has(figureId) && name === THUNDER_LEGEND_LABEL) {
+      const thunderVisibility = getStoredThunderLegendVisibility(stored);
+      if (thunderVisibility !== undefined) {
+        trace.visible = thunderVisibility;
+      }
+    }
   });
 }
 
@@ -5991,12 +8165,31 @@ function initializeChartContainerResizeObservers() {
       }
 
       lastSizes.set(card, { width, height });
+      if (shouldSkipLightningHourlyTopoRelayout(host)) {
+        return;
+      }
+      if (host.dataset?.figureId === "lightning_heatmap" && shouldUseHourlyLightningHeatmap()) {
+        // Resize the static base, then rebuild the overlay against the new geometry.
+        scheduleHostResize(host, { mode: "resize" })
+          .then(() => relayoutTopoMapPanel(host))
+          .then(() => awaitLayoutSettle())
+          .then(() => enterLightningHourlyOverlayCurrent(host));
+        return;
+      }
       if (isWindRoseChartHost(host)) {
         scheduleWindRoseResize(host);
         return;
       }
+      if (isTopoMapFigure(host.dataset?.figureId || "")) {
+        scheduleHostResize(host, { mode: "resize" });
+        return;
+      }
       if (host.dataset?.figureId === "scatter_wind_dewpt") {
         relayoutScatterWindDewptAxes(host);
+        return;
+      }
+      if (usesDualAxisPairedBarOverlays(host)) {
+        scheduleHostResize(host, { mode: "resize" });
         return;
       }
       scheduleHostResize(host);
@@ -6029,12 +8222,14 @@ function scheduleFetchCharts(delayMs = 0) {
 
 async function fetchChartsLite() {
   stopWindRosePlayback();
+  stopLightningPlayback();
   clearChartAxisLocks();
   const icao = els.icao.value;
   const section = state.requestedSection;
   if (state.displayedSection !== section) {
     resetMaximizedChartState();
     resetWindRoseModeOnSectionChange(section);
+    resetLightningHeatmapModeOnSectionChange(section);
   }
   const season = els.season.value;
 
@@ -6054,6 +8249,10 @@ async function fetchChartsLite() {
 
     if (shouldUseHourlyWindRose(section)) {
       await applyHourlyWindRoseOverride(data, icao, season);
+    }
+
+    if (shouldUseHourlyLightningHeatmap(section)) {
+      await applyHourlyLightningHeatmapOverride(data, icao, season);
     }
 
     if (data.error) {
@@ -6275,9 +8474,16 @@ function wireControls() {
 
   els.icao.addEventListener("change", () => {
     stopWindRosePlayback();
+    stopLightningPlayback();
     windRosePlayback.liteHourlyMap = null;
     windRosePlayback.apiHourlyFigures = null;
     windRosePlayback.apiCacheKey = null;
+    lightningPlayback.liteHourlyMap = null;
+    lightningPlayback.liteHourlyIcao = null;
+    resetLightningHourlyLayoutState();
+    state.lhMode = "summary";
+    state.lightningHeatmapScaleRef = null;
+    state.lightningHeatmapSummaryLayoutRef = null;
     clearChartLegendVisibility();
     clearChartAxisLocks();
     if (els.infoOverlay && !els.infoOverlay.classList.contains("hidden")) {
@@ -6341,9 +8547,12 @@ function wireControls() {
                 .then(() => relayoutScatterWindDewptAxes(host));
               return;
             }
-            const resizeOptions = strictGroupedBarOverlayFigureIds.has(host.dataset?.figureId || "")
-              ? { recalibrateFrame: true }
-              : {};
+            let resizeOptions = {};
+            if (usesDualAxisPairedBarOverlays(host)) {
+              resizeOptions = { mode: "resize" };
+            } else if (strictGroupedBarOverlayFigureIds.has(host.dataset?.figureId || "")) {
+              resizeOptions = { recalibrateFrame: true };
+            }
             scheduleHostResize(host, resizeOptions);
           }
         });

@@ -153,6 +153,29 @@
       </div>
     </div>
 
+    <div id="lh-toolbar-template" class="hidden">
+      <div class="lite-control-row">
+         <div class="segmented-toggle">
+            <button id="lh-mode-summary" class="segmented-toggle-btn active" type="button">Summary</button>
+            <button id="lh-mode-hourly" class="segmented-toggle-btn" type="button">Hourly</button>
+         </div>
+
+         <div class="lite-control-group hidden" id="lh-hour-scroller-container">
+            <div class="hour-scroller-row">
+               <button type="button" id="lh-hour-play" class="hour-play-btn" aria-label="Play hourly lightning heatmap animation" title="Play hourly animation">
+                  <svg class="hour-play-icon hour-play-icon-play" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M4 2.5v11l9-5.5z"></path></svg>
+                  <svg class="hour-play-icon hour-play-icon-pause" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M4 2h3v12H4zm5 0h3v12H9z"></path></svg>
+               </button>
+               <div class="frame-slider-shell">
+                  <div class="frame-slider-base"></div>
+                  <input type="range" id="lh-hour-scroller" class="frame-bound-slider" min="0" max="23" value="12">
+               </div>
+               <span id="lh-hour-value">12Z</span>
+            </div>
+         </div>
+      </div>
+    </div>
+
     <section class="time-controls api-only">
       <div class="dual-slider-grid">
         <div class="dual-slider-block">

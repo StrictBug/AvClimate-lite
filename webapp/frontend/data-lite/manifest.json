@@ -1,5 +1,5 @@
 {
-  "version": "lite-2.2",
+  "version": "lite-2.3",
   "encoding": "gzip",
   "airports": [
     "DEFB",
@@ -277,7 +277,8 @@
     "topo": "data-lite/{icao}/topo.png",
     "section": "data-lite/{icao}/{section}/{season}.json.gz",
     "figure": "data-lite/{icao}/figures/{figureId}/{season}_{mode}.json.gz",
-    "windRoseHourly": "data-lite/{icao}/wind_rose_hourly.json.gz"
+    "windRoseHourly": "data-lite/{icao}/wind_rose_hourly.json.gz",
+    "lightningHeatmapHourly": "data-lite/{icao}/lightning_heatmap_hourly.json.gz"
   },
   "default": {
     "airport": "YMML",

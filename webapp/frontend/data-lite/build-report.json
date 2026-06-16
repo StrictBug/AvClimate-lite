@@ -1,2127 +1,2127 @@
 {
-  "version": "lite-2.2",
+  "version": "lite-2.3",
   "airport_count": 212,
-  "fleet_total_bytes": 156335838,
+  "fleet_total_bytes": 123803252,
   "airports": {
     "DEFB": {
       "icao": "DEFB",
-      "gz_bytes": 347621,
+      "gz_bytes": 369297,
       "png_bytes": 288734,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 636355
+      "total_bytes": 658031
     },
     "YABA": {
       "icao": "YABA",
-      "gz_bytes": 596341,
+      "gz_bytes": 644704,
       "png_bytes": 189236,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 785577
+      "total_bytes": 833940
     },
     "YAMB": {
       "icao": "YAMB",
-      "gz_bytes": 581220,
+      "gz_bytes": 639437,
       "png_bytes": 387409,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 968629
+      "total_bytes": 1026846
     },
     "YANG": {
       "icao": "YANG",
-      "gz_bytes": 507704,
+      "gz_bytes": 548816,
       "png_bytes": 189704,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 697408
+      "total_bytes": 738520
     },
     "YARG": {
       "icao": "YARG",
-      "gz_bytes": 546492,
+      "gz_bytes": 592722,
       "png_bytes": 356301,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 902793
+      "total_bytes": 949023
     },
     "YARM": {
       "icao": "YARM",
-      "gz_bytes": 562678,
+      "gz_bytes": 618235,
       "png_bytes": 274501,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 837179
+      "total_bytes": 892736
     },
     "YAYE": {
       "icao": "YAYE",
-      "gz_bytes": 570178,
+      "gz_bytes": 614476,
       "png_bytes": 97732,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 667910
+      "total_bytes": 712208
     },
     "YBAF": {
       "icao": "YBAF",
-      "gz_bytes": 565204,
+      "gz_bytes": 619052,
       "png_bytes": 334246,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 899450
+      "total_bytes": 953298
     },
     "YBAS": {
       "icao": "YBAS",
-      "gz_bytes": 618640,
+      "gz_bytes": 663627,
       "png_bytes": 157199,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 775839
+      "total_bytes": 820826
     },
     "YBBN": {
       "icao": "YBBN",
-      "gz_bytes": 594697,
+      "gz_bytes": 653484,
       "png_bytes": 284660,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 879357
+      "total_bytes": 938144
     },
     "YBCG": {
       "icao": "YBCG",
-      "gz_bytes": 567360,
+      "gz_bytes": 620045,
       "png_bytes": 266337,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 833697
+      "total_bytes": 886382
     },
     "YBCS": {
       "icao": "YBCS",
-      "gz_bytes": 543926,
+      "gz_bytes": 592306,
       "png_bytes": 250987,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 794913
+      "total_bytes": 843293
     },
     "YBCV": {
       "icao": "YBCV",
-      "gz_bytes": 581752,
+      "gz_bytes": 632980,
       "png_bytes": 124448,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 706200
+      "total_bytes": 757428
     },
     "YBDG": {
       "icao": "YBDG",
-      "gz_bytes": 548034,
+      "gz_bytes": 600526,
       "png_bytes": 220371,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 768405
+      "total_bytes": 820897
     },
     "YBDV": {
       "icao": "YBDV",
-      "gz_bytes": 536366,
+      "gz_bytes": 562379,
       "png_bytes": 128083,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 664449
+      "total_bytes": 690462
     },
     "YBGD": {
       "icao": "YBGD",
-      "gz_bytes": 518488,
+      "gz_bytes": 560871,
       "png_bytes": 243907,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 762395
+      "total_bytes": 804778
     },
     "YBHI": {
       "icao": "YBHI",
-      "gz_bytes": 576128,
+      "gz_bytes": 622532,
       "png_bytes": 98735,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 674863
+      "total_bytes": 721267
     },
     "YBHM": {
       "icao": "YBHM",
-      "gz_bytes": 558148,
+      "gz_bytes": 601802,
       "png_bytes": 201487,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 759635
+      "total_bytes": 803289
     },
     "YBKE": {
       "icao": "YBKE",
-      "gz_bytes": 386031,
+      "gz_bytes": 406763,
       "png_bytes": 136568,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 522599
+      "total_bytes": 543331
     },
     "YBKT": {
       "icao": "YBKT",
-      "gz_bytes": 530108,
+      "gz_bytes": 569359,
       "png_bytes": 205724,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 735832
+      "total_bytes": 775083
     },
     "YBLN": {
       "icao": "YBLN",
-      "gz_bytes": 549164,
+      "gz_bytes": 592212,
       "png_bytes": 190851,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 740015
+      "total_bytes": 783063
     },
     "YBLT": {
       "icao": "YBLT",
-      "gz_bytes": 582543,
+      "gz_bytes": 634763,
       "png_bytes": 266584,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 849127
+      "total_bytes": 901347
     },
     "YBMA": {
       "icao": "YBMA",
-      "gz_bytes": 581668,
+      "gz_bytes": 628228,
       "png_bytes": 167523,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 749191
+      "total_bytes": 795751
     },
     "YBMK": {
       "icao": "YBMK",
-      "gz_bytes": 567970,
+      "gz_bytes": 619613,
       "png_bytes": 246256,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 814226
+      "total_bytes": 865869
     },
     "YBNA": {
       "icao": "YBNA",
-      "gz_bytes": 572198,
+      "gz_bytes": 628071,
       "png_bytes": 241326,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 813524
+      "total_bytes": 869397
     },
     "YBNS": {
       "icao": "YBNS",
-      "gz_bytes": 560034,
+      "gz_bytes": 608106,
       "png_bytes": 267016,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 827050
+      "total_bytes": 875122
     },
     "YBOK": {
       "icao": "YBOK",
-      "gz_bytes": 610875,
+      "gz_bytes": 668068,
       "png_bytes": 236814,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 847689
+      "total_bytes": 904882
     },
     "YBPN": {
       "icao": "YBPN",
-      "gz_bytes": 522855,
+      "gz_bytes": 575057,
       "png_bytes": 312603,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 835458
+      "total_bytes": 887660
     },
     "YBRK": {
       "icao": "YBRK",
-      "gz_bytes": 563967,
+      "gz_bytes": 617899,
       "png_bytes": 278488,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 842455
+      "total_bytes": 896387
     },
     "YBRM": {
       "icao": "YBRM",
-      "gz_bytes": 588112,
+      "gz_bytes": 633286,
       "png_bytes": 78548,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 666660
+      "total_bytes": 711834
     },
     "YBRY": {
       "icao": "YBRY",
-      "gz_bytes": 533540,
+      "gz_bytes": 575233,
       "png_bytes": 167389,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 700929
+      "total_bytes": 742622
     },
     "YBSU": {
       "icao": "YBSU",
-      "gz_bytes": 573451,
+      "gz_bytes": 628716,
       "png_bytes": 232995,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 806446
+      "total_bytes": 861711
     },
     "YBTH": {
       "icao": "YBTH",
-      "gz_bytes": 557437,
+      "gz_bytes": 612177,
       "png_bytes": 309973,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 867410
+      "total_bytes": 922150
     },
     "YBTI": {
       "icao": "YBTI",
-      "gz_bytes": 498296,
+      "gz_bytes": 541710,
       "png_bytes": 187298,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 685594
+      "total_bytes": 729008
     },
     "YBTL": {
       "icao": "YBTL",
-      "gz_bytes": 581002,
+      "gz_bytes": 629761,
       "png_bytes": 235172,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 816174
+      "total_bytes": 864933
     },
     "YBUD": {
       "icao": "YBUD",
-      "gz_bytes": 534945,
+      "gz_bytes": 586682,
       "png_bytes": 185567,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 720512
+      "total_bytes": 772249
     },
     "YBUN": {
       "icao": "YBUN",
-      "gz_bytes": 508930,
+      "gz_bytes": 555851,
       "png_bytes": 236191,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 745121
+      "total_bytes": 792042
     },
     "YBWP": {
       "icao": "YBWP",
-      "gz_bytes": 543274,
+      "gz_bytes": 594334,
       "png_bytes": 216671,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 759945
+      "total_bytes": 811005
     },
     "YBWW": {
       "icao": "YBWW",
-      "gz_bytes": 543006,
+      "gz_bytes": 594897,
       "png_bytes": 243761,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 786767
+      "total_bytes": 838658
     },
     "YBWX": {
       "icao": "YBWX",
-      "gz_bytes": 378477,
+      "gz_bytes": 388097,
       "png_bytes": 64815,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 443292
+      "total_bytes": 452912
     },
     "YCAR": {
       "icao": "YCAR",
-      "gz_bytes": 599829,
+      "gz_bytes": 640656,
       "png_bytes": 79411,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 679240
+      "total_bytes": 720067
     },
     "YCBA": {
       "icao": "YCBA",
-      "gz_bytes": 542134,
+      "gz_bytes": 590196,
       "png_bytes": 133036,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 675170
+      "total_bytes": 723232
     },
     "YCBB": {
       "icao": "YCBB",
-      "gz_bytes": 549589,
+      "gz_bytes": 598742,
       "png_bytes": 199698,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 749287
+      "total_bytes": 798440
     },
     "YCBP": {
       "icao": "YCBP",
-      "gz_bytes": 561383,
+      "gz_bytes": 597577,
       "png_bytes": 72774,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 634157
+      "total_bytes": 670351
     },
     "YCCY": {
       "icao": "YCCY",
-      "gz_bytes": 523359,
+      "gz_bytes": 560291,
       "png_bytes": 174077,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 697436
+      "total_bytes": 734368
     },
     "YCDU": {
       "icao": "YCDU",
-      "gz_bytes": 609611,
+      "gz_bytes": 654928,
       "png_bytes": 92515,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 702126
+      "total_bytes": 747443
     },
     "YCFS": {
       "icao": "YCFS",
-      "gz_bytes": 542557,
+      "gz_bytes": 592318,
       "png_bytes": 273843,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 816400
+      "total_bytes": 866161
     },
     "YCHK": {
       "icao": "YCHK",
-      "gz_bytes": 526808,
+      "gz_bytes": 567969,
       "png_bytes": 125183,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 651991
+      "total_bytes": 693152
     },
     "YCIN": {
       "icao": "YCIN",
-      "gz_bytes": 533113,
+      "gz_bytes": 575983,
       "png_bytes": 179733,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 712846
+      "total_bytes": 755716
     },
     "YCKN": {
       "icao": "YCKN",
-      "gz_bytes": 494044,
+      "gz_bytes": 540162,
       "png_bytes": 282927,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 776971
+      "total_bytes": 823089
     },
     "YCMT": {
       "icao": "YCMT",
-      "gz_bytes": 493572,
+      "gz_bytes": 534765,
       "png_bytes": 174871,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 668443
+      "total_bytes": 709636
     },
     "YCOE": {
       "icao": "YCOE",
-      "gz_bytes": 497765,
+      "gz_bytes": 533712,
       "png_bytes": 277669,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 775434
+      "total_bytes": 811381
     },
     "YCOM": {
       "icao": "YCOM",
-      "gz_bytes": 567129,
+      "gz_bytes": 619426,
       "png_bytes": 315911,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 883040
+      "total_bytes": 935337
     },
     "YCUN": {
       "icao": "YCUN",
-      "gz_bytes": 559197,
+      "gz_bytes": 605239,
       "png_bytes": 267009,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 826206
+      "total_bytes": 872248
     },
     "YCWA": {
       "icao": "YCWA",
-      "gz_bytes": 527366,
+      "gz_bytes": 568541,
       "png_bytes": 191759,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 719125
+      "total_bytes": 760300
     },
     "YDBY": {
       "icao": "YDBY",
-      "gz_bytes": 539906,
+      "gz_bytes": 579625,
       "png_bytes": 182911,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 722817
+      "total_bytes": 762536
     },
     "YDPO": {
       "icao": "YDPO",
-      "gz_bytes": 611531,
+      "gz_bytes": 658517,
       "png_bytes": 263670,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 875201
+      "total_bytes": 922187
     },
     "YELD": {
       "icao": "YELD",
-      "gz_bytes": 348422,
+      "gz_bytes": 363886,
       "png_bytes": 200649,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 549071
+      "total_bytes": 564535
     },
     "YEML": {
       "icao": "YEML",
-      "gz_bytes": 536070,
+      "gz_bytes": 584998,
       "png_bytes": 220640,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 756710
+      "total_bytes": 805638
     },
     "YERN": {
       "icao": "YERN",
-      "gz_bytes": 499911,
+      "gz_bytes": 521152,
       "png_bytes": 93081,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 592992
+      "total_bytes": 614233
     },
     "YEST": {
       "icao": "YEST",
-      "gz_bytes": 611775,
+      "gz_bytes": 662447,
       "png_bytes": 149177,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 760952
+      "total_bytes": 811624
     },
     "YEWA": {
       "icao": "YEWA",
-      "gz_bytes": 492071,
+      "gz_bytes": 526179,
       "png_bytes": 253012,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 745083
+      "total_bytes": 779191
     },
     "YFDF": {
       "icao": "YFDF",
-      "gz_bytes": 531936,
+      "gz_bytes": 572684,
       "png_bytes": 132012,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 663948
+      "total_bytes": 704696
     },
     "YFLI": {
       "icao": "YFLI",
-      "gz_bytes": 604156,
+      "gz_bytes": 650253,
       "png_bytes": 110687,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 714843
+      "total_bytes": 760940
     },
     "YFRT": {
       "icao": "YFRT",
-      "gz_bytes": 561409,
+      "gz_bytes": 601662,
       "png_bytes": 13473,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 574882
+      "total_bytes": 615135
     },
     "YFTZ": {
       "icao": "YFTZ",
-      "gz_bytes": 372802,
+      "gz_bytes": 389114,
       "png_bytes": 217432,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 590234
+      "total_bytes": 606546
     },
     "YGEL": {
       "icao": "YGEL",
-      "gz_bytes": 618279,
+      "gz_bytes": 665719,
       "png_bytes": 149638,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 767917
+      "total_bytes": 815357
     },
     "YGFN": {
       "icao": "YGFN",
-      "gz_bytes": 512121,
+      "gz_bytes": 565624,
       "png_bytes": 299796,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 811917
+      "total_bytes": 865420
     },
     "YGGE": {
       "icao": "YGGE",
-      "gz_bytes": 496866,
+      "gz_bytes": 539943,
       "png_bytes": 99946,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 596812
+      "total_bytes": 639889
     },
     "YGLA": {
       "icao": "YGLA",
-      "gz_bytes": 515388,
+      "gz_bytes": 568515,
       "png_bytes": 256986,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 772374
+      "total_bytes": 825501
     },
     "YGLB": {
       "icao": "YGLB",
-      "gz_bytes": 568881,
+      "gz_bytes": 620135,
       "png_bytes": 304679,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 873560
+      "total_bytes": 924814
     },
     "YGLI": {
       "icao": "YGLI",
-      "gz_bytes": 560336,
+      "gz_bytes": 614040,
       "png_bytes": 284362,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 844698
+      "total_bytes": 898402
     },
     "YGLS": {
       "icao": "YGLS",
-      "gz_bytes": 593754,
+      "gz_bytes": 629202,
       "png_bytes": 67062,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 660816
+      "total_bytes": 696264
     },
     "YGTE": {
       "icao": "YGTE",
-      "gz_bytes": 501478,
+      "gz_bytes": 547124,
       "png_bytes": 151684,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 653162
+      "total_bytes": 698808
     },
     "YGTH": {
       "icao": "YGTH",
-      "gz_bytes": 565164,
+      "gz_bytes": 616695,
       "png_bytes": 126653,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 691817
+      "total_bytes": 743348
     },
     "YGTN": {
       "icao": "YGTN",
-      "gz_bytes": 497421,
+      "gz_bytes": 538329,
       "png_bytes": 233116,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 730537
+      "total_bytes": 771445
     },
     "YHBA": {
       "icao": "YHBA",
-      "gz_bytes": 525241,
+      "gz_bytes": 577369,
       "png_bytes": 183795,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 709036
+      "total_bytes": 761164
     },
     "YHID": {
       "icao": "YHID",
-      "gz_bytes": 488790,
+      "gz_bytes": 529632,
       "png_bytes": 120851,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 609641
+      "total_bytes": 650483
     },
     "YHLC": {
       "icao": "YHLC",
-      "gz_bytes": 507096,
+      "gz_bytes": 545425,
       "png_bytes": 165075,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 672171
+      "total_bytes": 710500
     },
     "YHML": {
       "icao": "YHML",
-      "gz_bytes": 601079,
+      "gz_bytes": 647537,
       "png_bytes": 230605,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 831684
+      "total_bytes": 878142
     },
     "YHOO": {
       "icao": "YHOO",
-      "gz_bytes": 367032,
+      "gz_bytes": 384680,
       "png_bytes": 113585,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 480617
+      "total_bytes": 498265
     },
     "YHSM": {
       "icao": "YHSM",
-      "gz_bytes": 569005,
+      "gz_bytes": 617384,
       "png_bytes": 152405,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 721410
+      "total_bytes": 769789
     },
     "YHUG": {
       "icao": "YHUG",
-      "gz_bytes": 516652,
+      "gz_bytes": 555891,
       "png_bytes": 142136,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 658788
+      "total_bytes": 698027
     },
     "YIBO": {
       "icao": "YIBO",
-      "gz_bytes": 484856,
+      "gz_bytes": 518005,
       "png_bytes": 174752,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 659608
+      "total_bytes": 692757
     },
     "YIFL": {
       "icao": "YIFL",
-      "gz_bytes": 501144,
+      "gz_bytes": 547208,
       "png_bytes": 256881,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 758025
+      "total_bytes": 804089
     },
     "YIVO": {
       "icao": "YIVO",
-      "gz_bytes": 375031,
+      "gz_bytes": 394500,
       "png_bytes": 21173,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 396204
+      "total_bytes": 415673
     },
     "YJAB": {
       "icao": "YJAB",
-      "gz_bytes": 498016,
+      "gz_bytes": 540291,
       "png_bytes": 360876,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 858892
+      "total_bytes": 901167
     },
     "YJLC": {
       "icao": "YJLC",
-      "gz_bytes": 538832,
+      "gz_bytes": 575213,
       "png_bytes": 101798,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 640630
+      "total_bytes": 677011
     },
     "YKDD": {
       "icao": "YKDD",
-      "gz_bytes": 481101,
+      "gz_bytes": 513958,
       "png_bytes": 170256,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 651357
+      "total_bytes": 684214
     },
     "YKII": {
       "icao": "YKII",
-      "gz_bytes": 616721,
+      "gz_bytes": 663544,
       "png_bytes": 41732,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 658453
+      "total_bytes": 705276
     },
     "YKLC": {
       "icao": "YKLC",
-      "gz_bytes": 509531,
+      "gz_bytes": 546862,
       "png_bytes": 201163,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 710694
+      "total_bytes": 748025
     },
     "YKOW": {
       "icao": "YKOW",
-      "gz_bytes": 514787,
+      "gz_bytes": 558249,
       "png_bytes": 230557,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 745344
+      "total_bytes": 788806
     },
     "YKRY": {
       "icao": "YKRY",
-      "gz_bytes": 529684,
+      "gz_bytes": 579842,
       "png_bytes": 283657,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 813341
+      "total_bytes": 863499
     },
     "YKSC": {
       "icao": "YKSC",
-      "gz_bytes": 564267,
+      "gz_bytes": 608606,
       "png_bytes": 119440,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 683707
+      "total_bytes": 728046
     },
     "YLBD": {
       "icao": "YLBD",
-      "gz_bytes": 507335,
+      "gz_bytes": 549881,
       "png_bytes": 134850,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 642185
+      "total_bytes": 684731
     },
     "YLEC": {
       "icao": "YLEC",
-      "gz_bytes": 552386,
+      "gz_bytes": 589358,
       "png_bytes": 208523,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 760909
+      "total_bytes": 797881
     },
     "YLEO": {
       "icao": "YLEO",
-      "gz_bytes": 548250,
+      "gz_bytes": 593926,
       "png_bytes": 78946,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 627196
+      "total_bytes": 672872
     },
     "YLHI": {
       "icao": "YLHI",
-      "gz_bytes": 604293,
+      "gz_bytes": 656383,
       "png_bytes": 47610,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 651903
+      "total_bytes": 703993
     },
     "YLHR": {
       "icao": "YLHR",
-      "gz_bytes": 494283,
+      "gz_bytes": 537295,
       "png_bytes": 234152,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 728435
+      "total_bytes": 771447
     },
     "YLIS": {
       "icao": "YLIS",
-      "gz_bytes": 539822,
+      "gz_bytes": 593081,
       "png_bytes": 299295,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 839117
+      "total_bytes": 892376
     },
     "YLLE": {
       "icao": "YLLE",
-      "gz_bytes": 554048,
+      "gz_bytes": 591604,
       "png_bytes": 91262,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 645310
+      "total_bytes": 682866
     },
     "YLRE": {
       "icao": "YLRE",
-      "gz_bytes": 584343,
+      "gz_bytes": 628989,
       "png_bytes": 113129,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 697472
+      "total_bytes": 742118
     },
     "YLST": {
       "icao": "YLST",
-      "gz_bytes": 547518,
+      "gz_bytes": 594664,
       "png_bytes": 49743,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 597261
+      "total_bytes": 644407
     },
     "YLTV": {
       "icao": "YLTV",
-      "gz_bytes": 548470,
+      "gz_bytes": 599076,
       "png_bytes": 340828,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 889298
+      "total_bytes": 939904
     },
     "YMAV": {
       "icao": "YMAV",
-      "gz_bytes": 592522,
+      "gz_bytes": 643047,
       "png_bytes": 244238,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 836760
+      "total_bytes": 887285
     },
     "YMAY": {
       "icao": "YMAY",
-      "gz_bytes": 578049,
+      "gz_bytes": 631383,
       "png_bytes": 368881,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 946930
+      "total_bytes": 1000264
     },
     "YMBA": {
       "icao": "YMBA",
-      "gz_bytes": 494721,
+      "gz_bytes": 538468,
       "png_bytes": 340116,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 834837
+      "total_bytes": 878584
     },
     "YMBD": {
       "icao": "YMBD",
-      "gz_bytes": 580836,
+      "gz_bytes": 623453,
       "png_bytes": 233803,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 814639
+      "total_bytes": 857256
     },
     "YMDG": {
       "icao": "YMDG",
-      "gz_bytes": 547212,
+      "gz_bytes": 597039,
       "png_bytes": 298409,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 845621
+      "total_bytes": 895448
     },
     "YMEK": {
       "icao": "YMEK",
-      "gz_bytes": 587553,
+      "gz_bytes": 635038,
       "png_bytes": 29471,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 617024
+      "total_bytes": 664509
     },
     "YMEN": {
       "icao": "YMEN",
-      "gz_bytes": 579913,
+      "gz_bytes": 624055,
       "png_bytes": 297807,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 877720
+      "total_bytes": 921862
     },
     "YMER": {
       "icao": "YMER",
-      "gz_bytes": 521505,
+      "gz_bytes": 571296,
       "png_bytes": 284452,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 805957
+      "total_bytes": 855748
     },
     "YMES": {
       "icao": "YMES",
-      "gz_bytes": 573544,
+      "gz_bytes": 621771,
       "png_bytes": 271785,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 845329
+      "total_bytes": 893556
     },
     "YMGD": {
       "icao": "YMGD",
-      "gz_bytes": 502683,
+      "gz_bytes": 545510,
       "png_bytes": 225514,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 728197
+      "total_bytes": 771024
     },
     "YMHB": {
       "icao": "YMHB",
-      "gz_bytes": 604094,
+      "gz_bytes": 651027,
       "png_bytes": 376986,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 981080
+      "total_bytes": 1028013
     },
     "YMHU": {
       "icao": "YMHU",
-      "gz_bytes": 542987,
+      "gz_bytes": 585721,
       "png_bytes": 214030,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 757017
+      "total_bytes": 799751
     },
     "YMIA": {
       "icao": "YMIA",
-      "gz_bytes": 591397,
+      "gz_bytes": 641073,
       "png_bytes": 128157,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 719554
+      "total_bytes": 769230
     },
     "YMLT": {
       "icao": "YMLT",
-      "gz_bytes": 589559,
+      "gz_bytes": 634603,
       "png_bytes": 391793,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 981352
+      "total_bytes": 1026396
     },
     "YMMB": {
       "icao": "YMMB",
-      "gz_bytes": 592593,
+      "gz_bytes": 644017,
       "png_bytes": 298205,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 890798
+      "total_bytes": 942222
     },
     "YMML": {
       "icao": "YMML",
-      "gz_bytes": 652793,
+      "gz_bytes": 680643,
       "png_bytes": 296564,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 949357
+      "total_bytes": 977207
     },
     "YMND": {
       "icao": "YMND",
-      "gz_bytes": 513205,
+      "gz_bytes": 565516,
       "png_bytes": 350584,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 863789
+      "total_bytes": 916100
     },
     "YMNG": {
       "icao": "YMNG",
-      "gz_bytes": 556191,
+      "gz_bytes": 607165,
       "png_bytes": 294965,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 851156
+      "total_bytes": 902130
     },
     "YMOG": {
       "icao": "YMOG",
-      "gz_bytes": 542094,
+      "gz_bytes": 584440,
       "png_bytes": 42555,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 584649
+      "total_bytes": 626995
     },
     "YMOR": {
       "icao": "YMOR",
-      "gz_bytes": 613490,
+      "gz_bytes": 668803,
       "png_bytes": 177240,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 790730
+      "total_bytes": 846043
     },
     "YMRB": {
       "icao": "YMRB",
-      "gz_bytes": 524013,
+      "gz_bytes": 570053,
       "png_bytes": 194362,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 718375
+      "total_bytes": 764415
     },
     "YMRY": {
       "icao": "YMRY",
-      "gz_bytes": 539001,
+      "gz_bytes": 591753,
       "png_bytes": 290942,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 829943
+      "total_bytes": 882695
     },
     "YMTG": {
       "icao": "YMTG",
-      "gz_bytes": 599711,
+      "gz_bytes": 648903,
       "png_bytes": 147304,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 747015
+      "total_bytes": 796207
     },
     "YMTI": {
       "icao": "YMTI",
-      "gz_bytes": 522175,
+      "gz_bytes": 562099,
       "png_bytes": 118550,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 640725
+      "total_bytes": 680649
     },
     "YMYB": {
       "icao": "YMYB",
-      "gz_bytes": 530673,
+      "gz_bytes": 582460,
       "png_bytes": 232977,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 763650
+      "total_bytes": 815437
     },
     "YNAR": {
       "icao": "YNAR",
-      "gz_bytes": 550171,
+      "gz_bytes": 596470,
       "png_bytes": 136384,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 686555
+      "total_bytes": 732854
     },
     "YNBR": {
       "icao": "YNBR",
-      "gz_bytes": 555972,
+      "gz_bytes": 604038,
       "png_bytes": 233611,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 789583
+      "total_bytes": 837649
     },
     "YNGU": {
       "icao": "YNGU",
-      "gz_bytes": 340692,
+      "gz_bytes": 357815,
       "png_bytes": 257528,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 598220
+      "total_bytes": 615343
     },
     "YNRC": {
       "icao": "YNRC",
-      "gz_bytes": 390427,
+      "gz_bytes": 406891,
       "png_bytes": 112188,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 502615
+      "total_bytes": 519079
     },
     "YNTN": {
       "icao": "YNTN",
-      "gz_bytes": 519960,
+      "gz_bytes": 561946,
       "png_bytes": 221625,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 741585
+      "total_bytes": 783571
     },
     "YNWN": {
       "icao": "YNWN",
-      "gz_bytes": 532992,
+      "gz_bytes": 575707,
       "png_bytes": 91234,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 624226
+      "total_bytes": 666941
     },
     "YOLD": {
       "icao": "YOLD",
-      "gz_bytes": 548977,
+      "gz_bytes": 588259,
       "png_bytes": 99136,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 648113
+      "total_bytes": 687395
     },
     "YOLW": {
       "icao": "YOLW",
-      "gz_bytes": 532098,
+      "gz_bytes": 561080,
       "png_bytes": 129966,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 662064
+      "total_bytes": 691046
     },
     "YOOM": {
       "icao": "YOOM",
-      "gz_bytes": 543935,
+      "gz_bytes": 579818,
       "png_bytes": 123608,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 667543
+      "total_bytes": 703426
     },
     "YORG": {
       "icao": "YORG",
-      "gz_bytes": 595743,
+      "gz_bytes": 650940,
       "png_bytes": 281317,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 877060
+      "total_bytes": 932257
     },
     "YPAD": {
       "icao": "YPAD",
-      "gz_bytes": 613640,
+      "gz_bytes": 664639,
       "png_bytes": 196748,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 810388
+      "total_bytes": 861387
     },
     "YPAG": {
       "icao": "YPAG",
-      "gz_bytes": 559720,
+      "gz_bytes": 601995,
       "png_bytes": 185849,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 745569
+      "total_bytes": 787844
     },
     "YPBO": {
       "icao": "YPBO",
-      "gz_bytes": 533729,
+      "gz_bytes": 575577,
       "png_bytes": 215542,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 749271
+      "total_bytes": 791119
     },
     "YPCC": {
       "icao": "YPCC",
-      "gz_bytes": 531670,
+      "gz_bytes": 570366,
       "png_bytes": 45825,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 577495
+      "total_bytes": 616191
     },
     "YPDN": {
       "icao": "YPDN",
-      "gz_bytes": 605102,
+      "gz_bytes": 656442,
       "png_bytes": 237824,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 842926
+      "total_bytes": 894266
     },
     "YPEA": {
       "icao": "YPEA",
-      "gz_bytes": 600784,
+      "gz_bytes": 654404,
       "png_bytes": 261633,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 862417
+      "total_bytes": 916037
     },
     "YPED": {
       "icao": "YPED",
-      "gz_bytes": 569766,
+      "gz_bytes": 617407,
       "png_bytes": 186117,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 755883
+      "total_bytes": 803524
     },
     "YPGV": {
       "icao": "YPGV",
-      "gz_bytes": 565044,
+      "gz_bytes": 614113,
       "png_bytes": 143624,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 708668
+      "total_bytes": 757737
     },
     "YPJT": {
       "icao": "YPJT",
-      "gz_bytes": 563220,
+      "gz_bytes": 614277,
       "png_bytes": 237165,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 800385
+      "total_bytes": 851442
     },
     "YPKA": {
       "icao": "YPKA",
-      "gz_bytes": 556896,
+      "gz_bytes": 594081,
       "png_bytes": 158412,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 715308
+      "total_bytes": 752493
     },
     "YPKG": {
       "icao": "YPKG",
-      "gz_bytes": 601273,
+      "gz_bytes": 652852,
       "png_bytes": 146935,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 748208
+      "total_bytes": 799787
     },
     "YPKS": {
       "icao": "YPKS",
-      "gz_bytes": 559979,
+      "gz_bytes": 611431,
       "png_bytes": 212066,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 772045
+      "total_bytes": 823497
     },
     "YPKT": {
       "icao": "YPKT",
-      "gz_bytes": 357193,
+      "gz_bytes": 379864,
       "png_bytes": 193416,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 550609
+      "total_bytes": 573280
     },
     "YPKU": {
       "icao": "YPKU",
-      "gz_bytes": 548986,
+      "gz_bytes": 597089,
       "png_bytes": 357674,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 906660
+      "total_bytes": 954763
     },
     "YPLC": {
       "icao": "YPLC",
-      "gz_bytes": 573396,
+      "gz_bytes": 619679,
       "png_bytes": 156333,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 729729
+      "total_bytes": 776012
     },
     "YPLM": {
       "icao": "YPLM",
-      "gz_bytes": 602138,
+      "gz_bytes": 644878,
       "png_bytes": 118337,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 720475
+      "total_bytes": 763215
     },
     "YPMQ": {
       "icao": "YPMQ",
-      "gz_bytes": 538921,
+      "gz_bytes": 593387,
       "png_bytes": 287205,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 826126
+      "total_bytes": 880592
     },
     "YPOD": {
       "icao": "YPOD",
-      "gz_bytes": 570942,
+      "gz_bytes": 617082,
       "png_bytes": 113962,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 684904
+      "total_bytes": 731044
     },
     "YPPD": {
       "icao": "YPPD",
-      "gz_bytes": 613061,
+      "gz_bytes": 657862,
       "png_bytes": 109360,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 722421
+      "total_bytes": 767222
     },
     "YPPF": {
       "icao": "YPPF",
-      "gz_bytes": 571874,
+      "gz_bytes": 617422,
       "png_bytes": 191566,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 763440
+      "total_bytes": 808988
     },
     "YPPH": {
       "icao": "YPPH",
-      "gz_bytes": 607321,
+      "gz_bytes": 660680,
       "png_bytes": 252008,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 859329
+      "total_bytes": 912688
     },
     "YPTN": {
       "icao": "YPTN",
-      "gz_bytes": 552468,
+      "gz_bytes": 599526,
       "png_bytes": 221395,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 773863
+      "total_bytes": 820921
     },
     "YPWR": {
       "icao": "YPWR",
-      "gz_bytes": 634526,
+      "gz_bytes": 680569,
       "png_bytes": 143904,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 778430
+      "total_bytes": 824473
     },
     "YPXM": {
       "icao": "YPXM",
-      "gz_bytes": 495865,
+      "gz_bytes": 540528,
       "png_bytes": 75973,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 571838
+      "total_bytes": 616501
     },
     "YREN": {
       "icao": "YREN",
-      "gz_bytes": 542200,
+      "gz_bytes": 582552,
       "png_bytes": 113676,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 655876
+      "total_bytes": 696228
     },
     "YRMD": {
       "icao": "YRMD",
-      "gz_bytes": 528390,
+      "gz_bytes": 566802,
       "png_bytes": 134410,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 662800
+      "total_bytes": 701212
     },
     "YROM": {
       "icao": "YROM",
-      "gz_bytes": 544313,
+      "gz_bytes": 593984,
       "png_bytes": 138835,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 683148
+      "total_bytes": 732819
     },
     "YSBK": {
       "icao": "YSBK",
-      "gz_bytes": 576094,
+      "gz_bytes": 632392,
       "png_bytes": 287262,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 863356
+      "total_bytes": 919654
     },
     "YSCB": {
       "icao": "YSCB",
-      "gz_bytes": 601348,
+      "gz_bytes": 655435,
       "png_bytes": 312913,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 914261
+      "total_bytes": 968348
     },
     "YSCN": {
       "icao": "YSCN",
-      "gz_bytes": 547911,
+      "gz_bytes": 603829,
       "png_bytes": 335955,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 883866
+      "total_bytes": 939784
     },
     "YSCO": {
       "icao": "YSCO",
-      "gz_bytes": 538572,
+      "gz_bytes": 586244,
       "png_bytes": 362946,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 901518
+      "total_bytes": 949190
     },
     "YSCR": {
       "icao": "YSCR",
-      "gz_bytes": 553750,
+      "gz_bytes": 599187,
       "png_bytes": 129508,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 683258
+      "total_bytes": 728695
     },
     "YSDU": {
       "icao": "YSDU",
-      "gz_bytes": 565866,
+      "gz_bytes": 620084,
       "png_bytes": 208819,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 774685
+      "total_bytes": 828903
     },
     "YSGE": {
       "icao": "YSGE",
-      "gz_bytes": 533503,
+      "gz_bytes": 576602,
       "png_bytes": 102283,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 635786
+      "total_bytes": 678885
     },
     "YSHK": {
       "icao": "YSHK",
-      "gz_bytes": 362006,
+      "gz_bytes": 372879,
       "png_bytes": 150082,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 512088
+      "total_bytes": 522961
     },
     "YSHL": {
       "icao": "YSHL",
-      "gz_bytes": 554862,
+      "gz_bytes": 610792,
       "png_bytes": 284534,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 839396
+      "total_bytes": 895326
     },
     "YSHT": {
       "icao": "YSHT",
-      "gz_bytes": 547830,
+      "gz_bytes": 596248,
       "png_bytes": 224531,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 772361
+      "total_bytes": 820779
     },
     "YSHW": {
       "icao": "YSHW",
-      "gz_bytes": 521728,
+      "gz_bytes": 572496,
       "png_bytes": 283471,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 805199
+      "total_bytes": 855967
     },
     "YSNF": {
       "icao": "YSNF",
-      "gz_bytes": 600732,
+      "gz_bytes": 646133,
       "png_bytes": 74625,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 675357
+      "total_bytes": 720758
     },
     "YSNW": {
       "icao": "YSNW",
-      "gz_bytes": 602213,
+      "gz_bytes": 658872,
       "png_bytes": 280198,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 882411
+      "total_bytes": 939070
     },
     "YSOL": {
       "icao": "YSOL",
-      "gz_bytes": 516197,
+      "gz_bytes": 556798,
       "png_bytes": 230070,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 746267
+      "total_bytes": 786868
     },
     "YSRI": {
       "icao": "YSRI",
-      "gz_bytes": 552968,
+      "gz_bytes": 606920,
       "png_bytes": 367119,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 920087
+      "total_bytes": 974039
     },
     "YSRN": {
       "icao": "YSRN",
-      "gz_bytes": 587590,
+      "gz_bytes": 633264,
       "png_bytes": 299574,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 887164
+      "total_bytes": 932838
     },
     "YSSY": {
       "icao": "YSSY",
-      "gz_bytes": 640122,
+      "gz_bytes": 696685,
       "png_bytes": 237439,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 877561
+      "total_bytes": 934124
     },
     "YSTH": {
       "icao": "YSTH",
-      "gz_bytes": 543746,
+      "gz_bytes": 587062,
       "png_bytes": 250400,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 794146
+      "total_bytes": 837462
     },
     "YSTW": {
       "icao": "YSTW",
-      "gz_bytes": 558289,
+      "gz_bytes": 611847,
       "png_bytes": 287133,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 845422
+      "total_bytes": 898980
     },
     "YSWG": {
       "icao": "YSWG",
-      "gz_bytes": 615890,
+      "gz_bytes": 669453,
       "png_bytes": 290922,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 906812
+      "total_bytes": 960375
     },
     "YSWH": {
       "icao": "YSWH",
-      "gz_bytes": 562372,
+      "gz_bytes": 607038,
       "png_bytes": 149975,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 712347
+      "total_bytes": 757013
     },
     "YTEE": {
       "icao": "YTEE",
-      "gz_bytes": 537743,
+      "gz_bytes": 577544,
       "png_bytes": 141974,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 679717
+      "total_bytes": 719518
     },
     "YTEF": {
       "icao": "YTEF",
-      "gz_bytes": 561354,
+      "gz_bytes": 596287,
       "png_bytes": 93049,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 654403
+      "total_bytes": 689336
     },
     "YTEM": {
       "icao": "YTEM",
-      "gz_bytes": 375670,
+      "gz_bytes": 396902,
       "png_bytes": 193227,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 568897
+      "total_bytes": 590129
     },
     "YTGM": {
       "icao": "YTGM",
-      "gz_bytes": 536681,
+      "gz_bytes": 574891,
       "png_bytes": 129090,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 665771
+      "total_bytes": 703981
     },
     "YTGT": {
       "icao": "YTGT",
-      "gz_bytes": 397305,
+      "gz_bytes": 421557,
       "png_bytes": 53956,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 451261
+      "total_bytes": 475513
     },
     "YTMO": {
       "icao": "YTMO",
-      "gz_bytes": 521282,
+      "gz_bytes": 560790,
       "png_bytes": 142011,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 663293
+      "total_bytes": 702801
     },
     "YTNG": {
       "icao": "YTNG",
-      "gz_bytes": 509398,
+      "gz_bytes": 561382,
       "png_bytes": 279549,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 788947
+      "total_bytes": 840931
     },
     "YTNK": {
       "icao": "YTNK",
-      "gz_bytes": 576330,
+      "gz_bytes": 619583,
       "png_bytes": 76542,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 652872
+      "total_bytes": 696125
     },
     "YTRA": {
       "icao": "YTRA",
-      "gz_bytes": 497367,
+      "gz_bytes": 539640,
       "png_bytes": 81142,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 578509
+      "total_bytes": 620782
     },
     "YTRE": {
       "icao": "YTRE",
-      "gz_bytes": 554842,
+      "gz_bytes": 606346,
       "png_bytes": 304633,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 859475
+      "total_bytes": 910979
     },
     "YTST": {
       "icao": "YTST",
-      "gz_bytes": 508157,
+      "gz_bytes": 551741,
       "png_bytes": 250844,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 759001
+      "total_bytes": 802585
     },
     "YTWB": {
       "icao": "YTWB",
-      "gz_bytes": 551356,
+      "gz_bytes": 606809,
       "png_bytes": 273947,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 825303
+      "total_bytes": 880756
     },
     "YWBL": {
       "icao": "YWBL",
-      "gz_bytes": 576975,
+      "gz_bytes": 624334,
       "png_bytes": 149963,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 726938
+      "total_bytes": 774297
     },
     "YWBR": {
       "icao": "YWBR",
-      "gz_bytes": 377935,
+      "gz_bytes": 394099,
       "png_bytes": 41889,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 419824
+      "total_bytes": 435988
     },
     "YWDH": {
       "icao": "YWDH",
-      "gz_bytes": 505951,
+      "gz_bytes": 544713,
       "png_bytes": 96675,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 602626
+      "total_bytes": 641388
     },
     "YWGT": {
       "icao": "YWGT",
-      "gz_bytes": 539686,
+      "gz_bytes": 591700,
       "png_bytes": 330624,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 870310
+      "total_bytes": 922324
     },
     "YWHA": {
       "icao": "YWHA",
-      "gz_bytes": 551389,
+      "gz_bytes": 596511,
       "png_bytes": 178246,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 729635
+      "total_bytes": 774757
     },
     "YWLG": {
       "icao": "YWLG",
-      "gz_bytes": 556201,
+      "gz_bytes": 609808,
       "png_bytes": 118020,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 674221
+      "total_bytes": 727828
     },
     "YWLM": {
       "icao": "YWLM",
-      "gz_bytes": 610407,
+      "gz_bytes": 669295,
       "png_bytes": 283128,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 893535
+      "total_bytes": 952423
     },
     "YWLU": {
       "icao": "YWLU",
-      "gz_bytes": 520486,
+      "gz_bytes": 558603,
       "png_bytes": 39174,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 559660
+      "total_bytes": 597777
     },
     "YWMO": {
       "icao": "YWMO",
-      "gz_bytes": 321540,
+      "gz_bytes": 343589,
       "png_bytes": 63501,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 385041
+      "total_bytes": 407090
     },
     "YWTN": {
       "icao": "YWTN",
-      "gz_bytes": 532740,
+      "gz_bytes": 567257,
       "png_bytes": 115588,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 648328
+      "total_bytes": 682845
     },
     "YWYY": {
       "icao": "YWYY",
-      "gz_bytes": 592024,
+      "gz_bytes": 638656,
       "png_bytes": 231617,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 823641
+      "total_bytes": 870273
     },
     "YYND": {
       "icao": "YYND",
-      "gz_bytes": 360099,
+      "gz_bytes": 376795,
       "png_bytes": 54984,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 415083
+      "total_bytes": 431779
     },
     "YYNG": {
       "icao": "YYNG",
-      "gz_bytes": 531462,
+      "gz_bytes": 581397,
       "png_bytes": 228785,
       "legacy_json_files": [],
       "embedded_polar_images": 0,
       "warnings": [],
       "errors": [],
-      "total_bytes": 760247
+      "total_bytes": 810182
     }
   },
   "errors": [],
