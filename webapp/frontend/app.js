@@ -7322,7 +7322,7 @@ async function drawCharts(figures, section = state.displayedSection) {
     figure.layout = figure.layout || {};
     figure.layout.legend = figure.layout.legend || {};
     figure.layout.showlegend = false;
-    if (!isWindRoseFigure) {
+    if (!isWindRoseFigure && !isTopoMapShell) {
       figure.layout.margin = {
         ...(figure.layout.margin || {}),
         r: item.id === "hourly_precip" ? HOURLY_PRECIP_PANEL.margin.r : 32,
@@ -7502,6 +7502,11 @@ const TOPO_MAP_PANEL = {
   backgroundOpacity: 0.7,
 };
 
+// The lightning heatmap draws a colorbar (plus "Strike count" title) just right
+// of the plot area at paper x=1.02. The default topo right margin clips it once
+// the chart box has overflow:hidden, so reserve extra room on the right.
+const LIGHTNING_HEATMAP_MARGIN_R = 64;
+
 const POLAR_TOPO_FIGURE_IDS = new Set([
   "wind_rose",
   "precip_split",
@@ -7562,6 +7567,7 @@ function applyTopoMapPanelLayout(figure, figureId = "", options = {}) {
   const domainY = TOPO_MAP_PANEL.plotDomain.y.slice();
 
   if (figureId === "lightning_heatmap") {
+    figure.layout.margin.r = LIGHTNING_HEATMAP_MARGIN_R;
     figure.layout.xaxis = {
       ...(figure.layout.xaxis || {}),
       domain: domainX,
@@ -7613,6 +7619,7 @@ function buildTopoMapPanelRelayout(host) {
 
   if (figureId === "lightning_heatmap") {
     Object.assign(relayout, {
+      "margin.r": LIGHTNING_HEATMAP_MARGIN_R,
       "xaxis.domain": domainX,
       "yaxis.domain": domainY,
     });
