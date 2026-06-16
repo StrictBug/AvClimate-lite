@@ -78,7 +78,7 @@ const infoRainDayRule =
 
 
 const infoHourlyPrecipRainRule =
-  "10-minute precipitation > 0.2 mm";
+  "Rain/drizzle/shower/thunder present weather, or 10-minute precipitation > 0.2 mm";
 
 const infoPrecipSplitRule =
   "10-minute precipitation > 0.2 mm, or rain/shower/thunder present weather";
@@ -151,20 +151,17 @@ const infoFigureDetails = {
   },
   hourly_precip: {
     title: "Hourly Rain Observations",
-    description: "Precipitating observation counts by UTC hour on the primary axis; thunderstorm hours on the secondary axis.",
+    description: "Precipitating observation counts by UTC hour on the primary axis.",
     classification: [
       { term: "Precipitation", detail: infoHourlyPrecipRainRule },
-      { term: "Thunderstorm", detail: "Unique UTC hours per BoM year with at least one strike within 8 km, averaged by UTC hour (from 2009); secondary axis" },
-      { term: "Aggregation", detail: "Observation counts by UTC hour; average per hour across years" },
+      { term: "Thunderstorm", detail: "Unique UTC hours per BoM year with at least one strike within 8 km, averaged by UTC hour (from 2009)" },
     ],
   },
   lightning_heatmap: {
     title: "Lightning Strike Frequency",
-    description: "Strike counts within a 30 km radius of the aerodrome, with 8 km and 16 km range rings, over the same terrain background as radial plots.",
+    description: "Strike counts within a 30 km radius of the aerodrome, with 8 km and 16 km range rings.",
     classification: [
-      { term: "Coverage", detail: infoThunderDayRule },
-      { term: "Grid", detail: "48×48 cells (~1.25 km) over a 60 km square aligned to the 30 km strike radius" },
-      { term: "Background", detail: "Terrain from airport topo.png — same zoom-9 crop span as radial plots" },
+      { term: "Grid", detail: "48 x 48 binned lightning data (~1.25km grid) within 30km of the origin" },
     ],
   },
   monthly_fog: {
@@ -2736,12 +2733,18 @@ function applySectionLayout(section = state.displayedSection) {
   chartGrid.classList.toggle("smoke-dust-layout", section === "smoke_dust");
 }
 
+function airportDisplayLabel(icao) {
+  const code = String(icao || "").trim().toUpperCase();
+  const labels = state.options?.airportLabels || state.manifest?.airportLabels || {};
+  return labels[code] || code;
+}
+
 function fillSelect(select, options, selectedValue) {
   select.innerHTML = "";
   options.forEach((value) => {
     const opt = document.createElement("option");
     opt.value = value;
-    opt.textContent = value;
+    opt.textContent = airportDisplayLabel(value);
     if (value === selectedValue) {
       opt.selected = true;
     }
@@ -8581,7 +8584,7 @@ async function init() {
             manifestIcaos.forEach(icao => {
                 const opt = document.createElement("option");
                 opt.value = icao;
-                opt.textContent = icao;
+                opt.textContent = airportDisplayLabel(icao);
                 icaoSelect.appendChild(opt);
             });
             const defaultIcao = (state.manifest.default && state.manifest.default.airport) || manifestIcaos[0];

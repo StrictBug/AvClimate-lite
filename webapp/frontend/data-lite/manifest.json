@@ -2,7 +2,11 @@
   "version": "lite-2.3",
   "encoding": "gzip",
   "airports": [
+    "BWL",
     "DEFB",
+    "KMG",
+    "MUI",
+    "MVI",
     "YABA",
     "YAMB",
     "YANG",
@@ -283,5 +287,9 @@
   "default": {
     "airport": "YMML",
     "season": "all"
+  },
+  "airportLabels": {
+    "MVI": "MVI (MTB)",
+    "BWL": "BWL (MSV)"
   }
 }
