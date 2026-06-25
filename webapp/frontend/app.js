@@ -569,18 +569,29 @@ async function fetchLiteFigureShard(icao, figureId, season, mode) {
   return null;
 }
 
-async function assembleLiteFigures(icao, section, season) {
+async function assembleLiteFigures(icao, section, season, onProgress) {
   const figureOrder = infoSectionOverview[section]?.figureOrder || [];
-  const [basePayload, modeFigures] = await Promise.all([
-    fetchLiteSectionPayload(icao, section, season),
-    Promise.all(
-      liteModeFigureSpecsForSection(section).map(async (spec) => {
-        const mode = state.fogModes[spec.modeKey] || "all";
-        const shard = await fetchLiteFigureShard(icao, spec.figureId, season, mode);
-        return shard;
-      }),
-    ),
-  ]);
+  const modeSpecs = liteModeFigureSpecsForSection(section);
+  const totalSteps = 1 + modeSpecs.length;
+  let completed = 0;
+  const tick = (statusMessage) => {
+    completed += 1;
+    if (onProgress) {
+      onProgress(completed, totalSteps, statusMessage);
+    }
+  };
+
+  const basePayload = await fetchLiteSectionPayload(icao, section, season);
+  tick("Fetching section data...");
+
+  const modeFigures = await Promise.all(
+    modeSpecs.map(async (spec) => {
+      const mode = state.fogModes[spec.modeKey] || "all";
+      const shard = await fetchLiteFigureShard(icao, spec.figureId, season, mode);
+      tick(`Fetching ${spec.figureId}...`);
+      return shard;
+    }),
+  );
 
   const figuresById = new Map();
   (basePayload?.figures || []).forEach((item) => {
@@ -622,33 +633,37 @@ async function refreshLiteModeFigures(modeKey) {
   const season = els.season.value;
   const mode = state.fogModes[modeKey] || "all";
 
-  showLoading("Updating chart...");
-  try {
-    const shards = await Promise.all(
-      specs.map((spec) => fetchLiteFigureShard(icao, spec.figureId, season, mode)),
-    );
+  return runViewTransition({
+    message: "Updating chart...",
+    load: async ({ reportFetchProgress }) => {
+      const totalSteps = specs.length;
+      let completed = 0;
+      const shards = await Promise.all(
+        specs.map(async (spec) => {
+          const shard = await fetchLiteFigureShard(icao, spec.figureId, season, mode);
+          completed += 1;
+          reportFetchProgress(completed, totalSteps, `Updating ${spec.figureId}...`);
+          return shard;
+        }),
+      );
 
-    shards.forEach((shard) => {
-      if (!shard?.id) {
-        return;
-      }
-      const idx = state.latestFigures.findIndex((item) => item.id === shard.id);
-      if (idx >= 0) {
-        state.latestFigures[idx] = JSON.parse(JSON.stringify(shard));
-      }
-    });
+      shards.forEach((shard) => {
+        if (!shard?.id) {
+          return;
+        }
+        const idx = state.latestFigures.findIndex((item) => item.id === shard.id);
+        if (idx >= 0) {
+          state.latestFigures[idx] = JSON.parse(JSON.stringify(shard));
+        }
+      });
 
-    await drawCharts(state.latestFigures, section);
-    hideLoading();
-  } catch (error) {
-    console.error(error);
-    if (!isBenignChartRenderError(error)) {
-      setStatus(`Error: ${error.message}`);
-    } else {
-      setStatus("");
-    }
-    hideLoading();
-  }
+      return {
+        section,
+        figures: state.latestFigures,
+        metrics: {},
+      };
+    },
+  });
 }
 
 const fogLegendOrder = new Map([
@@ -657,6 +672,7 @@ const fogLegendOrder = new Map([
   ["1000ft - 500ft cloud", 2],
   ["< 500ft cloud", 3],
   ["Fog", 4],
+  ["Freezing fog", 5],
 ]);
 
 const smokeLegendOrder = new Map([
@@ -664,6 +680,16 @@ const smokeLegendOrder = new Map([
   ["DU", 1],
   ["SA", 2],
   ["VA", 3],
+]);
+
+const windRoseLegendOrder = new Map([
+  ["Calm", 0],
+  ["1-3 kt", 1],
+  ["4-6 kt", 2],
+  ["6-10 kt", 3],
+  ["10-15 kt", 4],
+  ["15-20 kt", 5],
+  [">20 kt", 6],
 ]);
 
 const fogPanels = [
@@ -677,6 +703,9 @@ const defaultLegendTraceVisibilityByFigure = {
   temp_dewpoint: {
     "Avg Daily Max Td": "legendonly",
     "Avg Daily Min Td": "legendonly",
+  },
+  wind_rose: {
+    Calm: "legendonly",
   },
 };
 
@@ -943,17 +972,28 @@ function ensureChartShell(host) {
     maximizeButton.textContent = "Maximize";
     maximizeButton.addEventListener("click", () => {
       const chartIndex = Number(maximizeButton.dataset.chartIndex);
-      state.maximizedChartIndex = state.maximizedChartIndex === chartIndex ? null : chartIndex;
-      if (state.lhMode === "hourly") {
-        resetLightningHourlyLayoutState();
-      }
-      applyMaximizedChartState();
-      invalidateCanonicalGeometryForVisibleCharts();
-      if (state.latestFigures.length) {
-        drawCharts(state.latestFigures, state.displayedSection);
-      } else {
+      const nextMaximized = state.maximizedChartIndex === chartIndex ? null : chartIndex;
+      if (!state.latestFigures.length) {
+        state.maximizedChartIndex = nextMaximized;
+        applyMaximizedChartState();
         applyChartShellHeights(state.displayedSection);
+        return;
       }
+      runViewTransition({
+        message: nextMaximized === null ? "Restoring chart grid..." : "Expanding chart...",
+        prepare: () => {
+          if (state.lhMode === "hourly") {
+            resetLightningHourlyLayoutState();
+          }
+          invalidateCanonicalGeometryForVisibleCharts();
+        },
+        load: async () => ({
+          section: state.displayedSection,
+          figures: state.latestFigures,
+          metrics: {},
+          maximizedChartIndex: nextMaximized,
+        }),
+      });
     });
     card.appendChild(maximizeButton);
   }
@@ -1202,7 +1242,18 @@ function closeInfoModal() {
 }
 
 let loadingProgress = 0;
-let loadingTimer = null;
+let loadingFallbackTimer = null;
+let lastProgressAt = 0;
+let transitionToken = 0;
+let activeTransitionToken = 0;
+let pendingTransitionAbort = null;
+let pendingFetch = null;
+
+const LOADING_PHASE = {
+  START: 15,
+  FETCH_END: 70,
+  RENDER_END: 95,
+};
 
 function setStatus(message = "") {
   els.status.textContent = message;
@@ -1231,39 +1282,276 @@ function setLoadingState(progress, message) {
   if (message) {
     els.loadingStatus.textContent = message;
   }
+  lastProgressAt = Date.now();
+}
+
+function mapFetchProgress(completed, total) {
+  if (!total) {
+    return LOADING_PHASE.START;
+  }
+  const ratio = completed / total;
+  return LOADING_PHASE.START + ratio * (LOADING_PHASE.FETCH_END - LOADING_PHASE.START);
+}
+
+function mapRenderProgress(completed, total) {
+  if (!total) {
+    return LOADING_PHASE.FETCH_END;
+  }
+  const ratio = completed / total;
+  return LOADING_PHASE.FETCH_END + ratio * (LOADING_PHASE.RENDER_END - LOADING_PHASE.FETCH_END);
+}
+
+function stopLoadingFallbackTimer() {
+  if (loadingFallbackTimer) {
+    clearInterval(loadingFallbackTimer);
+    loadingFallbackTimer = null;
+  }
+}
+
+function startLoadingFallbackTimer() {
+  stopLoadingFallbackTimer();
+  lastProgressAt = Date.now();
+  loadingFallbackTimer = setInterval(() => {
+    if (Date.now() - lastProgressAt > 2000 && loadingProgress < 90) {
+      setLoadingState(Math.min(90, loadingProgress + 2));
+    }
+  }, 500);
 }
 
 function showLoading(message = "Preparing charts...") {
-  if (loadingTimer) {
-    clearInterval(loadingTimer);
-    loadingTimer = null;
-  }
-  setLoadingState(12, message);
+  stopLoadingFallbackTimer();
+  setLoadingState(5, message);
   els.loadingOverlay.classList.remove("hidden");
-  // Add loading class to chart grid to lock layout
+  els.loadingOverlay.classList.remove("is-rendering");
   const chartGrid = document.getElementById("chart-grid");
-  if (chartGrid) chartGrid.classList.add("is-loading");
-
-  loadingTimer = setInterval(() => {
-    if (loadingProgress < 90) {
-      setLoadingState(loadingProgress + 6);
-    }
-  }, 180);
+  if (chartGrid) {
+    chartGrid.classList.add("is-loading");
+  }
+  startLoadingFallbackTimer();
 }
 
 function hideLoading() {
-  if (loadingTimer) {
-    clearInterval(loadingTimer);
-    loadingTimer = null;
-  }
+  stopLoadingFallbackTimer();
   setLoadingState(100, "Ready");
   setTimeout(() => {
     els.loadingOverlay.classList.add("hidden");
-    // Remove loading class from chart grid
+    els.loadingOverlay.classList.remove("is-rendering");
     const chartGrid = document.getElementById("chart-grid");
-    if (chartGrid) chartGrid.classList.remove("is-loading");
+    if (chartGrid) {
+      chartGrid.classList.remove("is-loading");
+    }
     setLoadingState(0, "Preparing charts...");
   }, 120);
+}
+
+function isActiveTransition(token) {
+  return token === activeTransitionToken;
+}
+
+function beginViewTransition(message) {
+  transitionToken += 1;
+  const token = transitionToken;
+  activeTransitionToken = token;
+
+  if (pendingTransitionAbort) {
+    pendingTransitionAbort.abort();
+  }
+  pendingTransitionAbort = new AbortController();
+  pendingFetch = pendingTransitionAbort;
+
+  showLoading(message);
+  setLoadingState(5, message);
+
+  const chartGrid = document.getElementById("chart-grid");
+  if (chartGrid) {
+    chartGrid.classList.remove("is-pending-reveal");
+    chartGrid.classList.add("is-transitioning");
+  }
+  if (els.metrics) {
+    els.metrics.classList.remove("is-pending-reveal");
+  }
+  els.loadingOverlay.classList.remove("is-rendering");
+
+  return { token, signal: pendingTransitionAbort.signal };
+}
+
+function enterRenderPhase() {
+  const chartGrid = document.getElementById("chart-grid");
+  if (chartGrid) {
+    chartGrid.classList.add("is-pending-reveal");
+  }
+  if (els.metrics) {
+    els.metrics.classList.add("is-pending-reveal");
+  }
+  els.loadingOverlay.classList.add("is-rendering");
+  setLoadingState(LOADING_PHASE.FETCH_END, "Rendering charts...");
+}
+
+function finishViewTransition(token) {
+  if (!isActiveTransition(token)) {
+    return false;
+  }
+
+  stopLoadingFallbackTimer();
+
+  const chartGrid = document.getElementById("chart-grid");
+  if (chartGrid) {
+    chartGrid.classList.remove("is-transitioning", "is-pending-reveal", "is-loading");
+  }
+  if (els.metrics) {
+    els.metrics.classList.remove("is-pending-reveal");
+  }
+  els.loadingOverlay.classList.remove("is-rendering");
+
+  if (pendingTransitionAbort && pendingFetch === pendingTransitionAbort) {
+    pendingFetch = null;
+  }
+  pendingTransitionAbort = null;
+
+  hideLoading();
+  hasShownInitialLoading = true;
+  return true;
+}
+
+function cancelViewTransition(token) {
+  if (!isActiveTransition(token)) {
+    return;
+  }
+
+  stopLoadingFallbackTimer();
+
+  const chartGrid = document.getElementById("chart-grid");
+  if (chartGrid) {
+    chartGrid.classList.remove("is-transitioning", "is-pending-reveal");
+  }
+  if (els.metrics) {
+    els.metrics.classList.remove("is-pending-reveal");
+  }
+  els.loadingOverlay.classList.remove("is-rendering");
+
+  if (pendingTransitionAbort && pendingFetch === pendingTransitionAbort) {
+    pendingFetch = null;
+  }
+  pendingTransitionAbort = null;
+
+  hideLoading();
+}
+
+async function commitViewUpdate(payload, token) {
+  const {
+    section,
+    figures,
+    metrics = {},
+    shouldResetMaximize = false,
+    maximizedChartIndex,
+  } = payload;
+
+  if (!isActiveTransition(token)) {
+    return false;
+  }
+
+  if (shouldResetMaximize) {
+    state.maximizedChartIndex = null;
+  }
+  if (maximizedChartIndex !== undefined) {
+    state.maximizedChartIndex = maximizedChartIndex;
+  }
+
+  state.displayedSection = section;
+  applySectionLayout(section);
+
+  const reportRender = (completed, total) => {
+    if (!isActiveTransition(token)) {
+      return;
+    }
+    setLoadingState(
+      mapRenderProgress(completed, total),
+      total ? `Rendering charts (${completed}/${total})...` : "Rendering charts...",
+    );
+  };
+
+  await renderChartsToDom(figures, section, reportRender);
+
+  if (!isActiveTransition(token)) {
+    return false;
+  }
+
+  setLoadingState(96, "Finalizing...");
+  renderMetrics(metrics, section);
+  setLoadingState(99, "Ready");
+  return true;
+}
+
+async function runViewTransition({
+  message = "Loading charts...",
+  prepare,
+  load,
+  shouldResetMaximize = false,
+}) {
+  const { token, signal } = beginViewTransition(message);
+
+  try {
+    if (prepare) {
+      prepare({ signal, token });
+    }
+
+    const loadResult = await load({
+      signal,
+      token,
+      reportFetchProgress: (completed, total, statusMessage) => {
+        if (!isActiveTransition(token)) {
+          return;
+        }
+        setLoadingState(
+          mapFetchProgress(completed, total),
+          statusMessage || (total ? `Fetching charts (${completed}/${total})...` : "Fetching charts..."),
+        );
+      },
+    });
+
+    if (!isActiveTransition(token) || signal.aborted) {
+      return;
+    }
+
+    enterRenderPhase();
+
+    const committed = await commitViewUpdate({
+      section: loadResult.section ?? state.requestedSection,
+      figures: loadResult.figures ?? [],
+      metrics: loadResult.metrics ?? {},
+      shouldResetMaximize: loadResult.shouldResetMaximize ?? shouldResetMaximize,
+      maximizedChartIndex: loadResult.maximizedChartIndex,
+    }, token);
+
+    if (!committed || !isActiveTransition(token)) {
+      return;
+    }
+
+    finishViewTransition(token);
+
+    if (loadResult.statusMessage !== undefined) {
+      setStatus(loadResult.statusMessage);
+    } else if (loadResult.warning) {
+      setStatus(loadResult.warning);
+    } else {
+      setStatus("");
+    }
+  } catch (err) {
+    if (signal.aborted || err?.name === "AbortError" || !isActiveTransition(token)) {
+      return;
+    }
+    console.error(err);
+    if (!isBenignChartRenderError(err)) {
+      if (window.location.hostname.endsWith("github.io") && !API_BASE && !state.liteMode) {
+        setStatus("Failed to load charts. Set AVCLIMATE_API_BASE in config.js to your deployed backend URL.");
+      } else {
+        setStatus(`Error: ${err.message}`);
+      }
+    } else {
+      setStatus("");
+    }
+    cancelViewTransition(token);
+  }
 }
 
 function resetMaximizedChartState() {
@@ -1308,7 +1596,6 @@ function renderCategories() {
         return;
       }
       state.requestedSection = section.key;
-      resetMaximizedChartState();
       renderCategories();
       clearChartAxisLocks();
       fetchCharts();
@@ -1343,7 +1630,6 @@ function renderDayTypeToggle(toolbar, modeKey) {
         return;
       }
       state.fogModes[modeKey] = option.value;
-      updateChartToolbars();
       if (state.liteMode) {
         refreshLiteModeFigures(modeKey);
       } else {
@@ -1621,7 +1907,7 @@ async function renderWindRoseHourFrame(hour, section = state.displayedSection) {
   }
 
   const hourlyWrFig = JSON.parse(JSON.stringify(sourceFigure));
-  resetDefaultLegendTraceVisibility(hourlyWrFig.figure);
+  resetDefaultLegendTraceVisibility(hourlyWrFig.figure, "wind_rose");
   const chartHeight = Number.parseFloat(host.style.height) || getChartHeight(section);
 
   // One stable radial range across all 24 hours + summary, so the polar grid
@@ -1645,6 +1931,7 @@ async function renderWindRoseHourFrame(hour, section = state.displayedSection) {
   await preparePolarTerrainBackground(hourlyWrFig.figure, icao);
   applyStrictValueHoverTemplatesToFigure(hourlyWrFig.figure, "wind_rose");
   applyChartLegendVisibilityToFigure(hourlyWrFig.figure, "wind_rose");
+  normalizeWindRoseCalmTrace(hourlyWrFig.figure);
 
   const windRoseIndex = state.latestFigures.findIndex((item) => item.id === "wind_rose");
 
@@ -1657,6 +1944,8 @@ async function renderWindRoseHourFrame(hour, section = state.displayedSection) {
     const thetaArrays = srcData.map((trace) => trace.theta);
     const indices = srcData.map((_, idx) => idx);
     await Plotly.restyle(host, { r: rArrays, theta: thetaArrays }, indices);
+    await ensureWindRoseCalmLayerOrder(host);
+    deferWindRoseCalmDomHover(host);
     if (windRoseIndex >= 0) {
       state.latestFigures[windRoseIndex] = hourlyWrFig;
     }
@@ -1698,6 +1987,8 @@ async function renderWindRoseHourFrame(hour, section = state.displayedSection) {
   if (!liveLayout) {
     await scheduleWindRoseResize(host);
   }
+  await ensureWindRoseCalmLayerOrder(host);
+  deferWindRoseCalmDomHover(host);
   windRosePlayback.frameContext = windRoseFramePinContext(host);
 }
 
@@ -1731,12 +2022,19 @@ async function exitWindRoseHourlyInPlace(section = state.displayedSection) {
     return;
   }
 
+  const cachedHasCalm = (cached.figure.data || []).some((trace) => isWindRoseCalmTrace(trace));
+  if (!cachedHasCalm) {
+    fetchCharts();
+    return;
+  }
+
   const icao = els.icao.value;
   const summaryItem = JSON.parse(JSON.stringify(cached));
   resetDefaultLegendTraceVisibility(summaryItem.figure, "wind_rose");
   const chartHeight = Number.parseFloat(host.style.height) || getChartHeight(section);
   applyStrictValueHoverTemplatesToFigure(summaryItem.figure, "wind_rose");
   applyChartLegendVisibilityToFigure(summaryItem.figure, "wind_rose");
+  normalizeWindRoseCalmTrace(summaryItem.figure);
 
   // Reuse the on-screen geometry so the rose does not resize while restoring
   // (no blink), but apply the summary's own auto-fitted radial range so it
@@ -1777,9 +2075,11 @@ async function exitWindRoseHourlyInPlace(section = state.displayedSection) {
     renderExternalLegend(host, legend, summaryItem.figure, section, "wind_rose");
   }
   windRosePlayback.frameContext = null;
+  deferWindRoseCalmDomHover(host);
   if (!liveLayout) {
     await scheduleWindRoseResize(host);
   }
+  await ensureWindRoseCalmLayerOrder(host);
 }
 
 async function advanceWindRosePlaybackFrame() {
@@ -3228,6 +3528,9 @@ function renderMetrics(metrics, section = state.displayedSection) {
 
 function clearChart(index) {
   const host = els.charts[index];
+  if (host?.dataset?.figureId === "wind_rose") {
+    teardownWindRoseCalmDomHover(host);
+  }
   const { card, shell, legend, maximizeButton } = chartUi[index];
   Plotly.purge(host);
   legend.innerHTML = "";
@@ -3372,6 +3675,16 @@ function getLegendItems(figure, section = state.displayedSection, figureId = "")
       return [];
     }
 
+    if (
+      (figureId === "fog_low_cloud" || figureId === "monthly_fog" || figureId === "fog_share")
+      && String(trace.name) === "Freezing fog"
+    ) {
+      const yVals = numericArray(trace.y);
+      if (!yVals.some((value) => Number.isFinite(value) && value > 0)) {
+        return [];
+      }
+    }
+
     return [{
       index,
       label: String(trace.name),
@@ -3395,6 +3708,17 @@ function getLegendItems(figure, section = state.displayedSection, figureId = "")
     items.sort((left, right) => {
       const leftRank = smokeLegendOrder.get(left.label) ?? Number.MAX_SAFE_INTEGER;
       const rightRank = smokeLegendOrder.get(right.label) ?? Number.MAX_SAFE_INTEGER;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+      return left.index - right.index;
+    });
+  }
+
+  if (figureId === "wind_rose") {
+    items.sort((left, right) => {
+      const leftRank = windRoseLegendOrder.get(left.label) ?? Number.MAX_SAFE_INTEGER;
+      const rightRank = windRoseLegendOrder.get(right.label) ?? Number.MAX_SAFE_INTEGER;
       if (leftRank !== rightRank) {
         return leftRank - rightRank;
       }
@@ -3520,7 +3844,7 @@ function tracePointCount(values) {
   return 0;
 }
 
-function decodePlotlyBinaryArray(values) {
+function decodePlotlyBinaryArrayAligned(values) {
   if (!values || typeof values !== "object" || typeof values.bdata !== "string") {
     return null;
   }
@@ -3559,12 +3883,36 @@ function decodePlotlyBinaryArray(values) {
     }
 
     const typed = new dtypeInfo.ctor(bytes.buffer);
-    return Array.from(typed)
-      .map((value) => Number(value))
-      .filter((value) => Number.isFinite(value));
+    return Array.from(typed).map((value) => Number(value));
   } catch {
     return null;
   }
+}
+
+function decodePlotlyBinaryArray(values) {
+  const aligned = decodePlotlyBinaryArrayAligned(values);
+  if (!aligned) {
+    return null;
+  }
+  return aligned.filter((value) => Number.isFinite(value));
+}
+
+function alignedValueArray(values) {
+  const decodedBinary = decodePlotlyBinaryArrayAligned(values);
+  if (decodedBinary) {
+    return decodedBinary;
+  }
+
+  if (Array.isArray(values)) {
+    return values.map((value) => Number(value));
+  }
+  if (values && typeof values.length === "number") {
+    return Array.from(values).map((value) => Number(value));
+  }
+  if (values && typeof values === "object" && Array.isArray(values.data)) {
+    return values.data.map((value) => Number(value));
+  }
+  return [];
 }
 
 function filledErrorArray(values, errorValue) {
@@ -6708,8 +7056,8 @@ function remapFogFigureToSeasonMonths(figure, targetMonthLabels) {
       return trace;
     }
 
-    const yValues = Array.isArray(trace?.y) ? trace.y : [];
-    const customdata = Array.isArray(trace?.customdata) ? trace.customdata : null;
+    const yValues = alignedValueArray(trace?.y);
+    const customdata = Array.isArray(trace?.customdata) ? trace.customdata.slice() : null;
     const xOffset = Number(xValues[0]) - Math.round(Number(xValues[0]));
     const newX = [];
     const newY = [];
@@ -6746,8 +7094,8 @@ function filterCategoryTracesToSeasonMonths(figure, targetMonthLabels) {
       return trace;
     }
 
-    const yValues = Array.isArray(trace?.y) ? trace.y : [];
-    const customdata = Array.isArray(trace?.customdata) ? trace.customdata : null;
+    const yValues = alignedValueArray(trace?.y);
+    const customdata = Array.isArray(trace?.customdata) ? trace.customdata.slice() : null;
     const newX = [];
     const newY = [];
     const newCustom = [];
@@ -7098,6 +7446,8 @@ function renderExternalLegend(host, legendHost, figure, section = state.displaye
           .then(() => rebuildStrictValueErrorBarOverlays(host))
           .then(() => finishStrictValueErrorBarOverlays(host))
           .then(() => (figureId === "cloud_distribution" ? syncFogWindHoverTemplate(host) : Promise.resolve()))
+          .then(() => (figureId === "wind_rose" ? refreshWindRoseCalmBarMask(host) : Promise.resolve()))
+          .then(() => (figureId === "wind_rose" ? deferWindRoseCalmDomHover(host) : Promise.resolve()))
           .then(() => rescaleAfterLegendToggle(host));
 
       toggleChain.then(() => {
@@ -7185,7 +7535,11 @@ function scheduleHostResize(host, options = {}) {
           }
           if (!hostUsesFrequencyAxisLabelLock(host)) {
             if (isTopoMapFigure(host.dataset?.figureId || "")) {
-              return relayoutTopoMapPanel(host);
+              return relayoutTopoMapPanel(host).then(() => {
+                if (host?.dataset?.figureId === "wind_rose" && isTraceVisible(windRoseCalmVisualTrace(host))) {
+                  ensureWindRoseCalmBarMask(host);
+                }
+              });
             }
             return;
           }
@@ -7211,6 +7565,11 @@ function scheduleWindRoseResize(host) {
     requestAnimationFrame(() => {
       Promise.resolve(Plotly.Plots.resize(host))
         .then(() => relayoutTopoMapPanel(host))
+        .then(() => {
+          if (host?.dataset?.figureId === "wind_rose" && isTraceVisible(windRoseCalmVisualTrace(host))) {
+            ensureWindRoseCalmBarMask(host);
+          }
+        })
         .finally(resolve);
     });
   });
@@ -7261,18 +7620,27 @@ function applyChartShellHeights(section = state.displayedSection) {
   return chartHeight;
 }
 
-async function drawCharts(figures, section = state.displayedSection) {
+function prepareChartsRender(figures) {
+  const renderFigures = figures.map(cloneFigurePayloadForRender);
+  state.latestFigures = renderFigures;
+  return renderFigures.slice(0, 4);
+}
+
+async function renderChartsToDom(figures, section = state.displayedSection, onProgress) {
   // Remove any stale lightning overlay before re-rendering the base charts; it is
   // rebuilt afterwards when hourly mode is active.
   teardownLightningOverlay();
-  const renderFigures = figures.map(cloneFigurePayloadForRender);
-  state.latestFigures = renderFigures;
-  const isWindSection = section === "wind";
+  const visibleFigures = prepareChartsRender(figures);
   const isExpandedSection = section === "wind";
   const chartHeight = applyChartShellHeights(section);
-  const visibleFigures = renderFigures.slice(0, 4);
-
-  // Keep maximize controls hidden until all chart renders complete.
+  const totalCharts = visibleFigures.length;
+  let completedCharts = 0;
+  const reportChartComplete = () => {
+    completedCharts += 1;
+    if (onProgress) {
+      onProgress(completedCharts, totalCharts);
+    }
+  };
 
   const icao = els.icao?.value || "";
   const season = els.season?.value || "all";
@@ -7309,10 +7677,6 @@ async function drawCharts(figures, section = state.displayedSection) {
       figure.layout.height = targetChartHeight;
       delete figure.layout.width;
       if (state.wrMode === "summary") {
-        state.windRoseLayoutRef[section] = extractWindRoseLayoutSnapshot(figure, section, targetChartHeight);
-        // Cache the summary rose so toggling hourly -> summary can restore it in
-        // place without a full grid re-fetch/redraw.
-        state.windRoseSummaryFigure[section] = JSON.parse(JSON.stringify(item));
         windRosePlayback.frameContext = null;
       } else {
         windRosePlayback.frameContext = windRoseFramePinContext(host);
@@ -7389,6 +7753,18 @@ async function drawCharts(figures, section = state.displayedSection) {
       delete figure.layout.width;
     }
     applyChartLegendVisibilityToFigure(figure, item.id);
+    if (isWindRoseFigure) {
+      normalizeWindRoseCalmTrace(figure);
+      if (state.wrMode === "summary") {
+        state.windRoseLayoutRef[section] = extractWindRoseLayoutSnapshot(figure, section, targetChartHeight);
+        // Cache the summary rose so toggling hourly -> summary can restore it in
+        // place without a full grid re-fetch/redraw.
+        state.windRoseSummaryFigure[section] = {
+          id: item.id,
+          figure: JSON.parse(JSON.stringify(figure)),
+        };
+      }
+    }
     const skipHourlyPrecipMaximizePipeline = isMaximized && item.id === "hourly_precip";
     const lockLightningHourlyPlot = item.id === "lightning_heatmap" && shouldUseHourlyLightningHeatmap(section);
     return Plotly.react(host, figure.data || [], figure.layout || {}, {
@@ -7418,7 +7794,7 @@ async function drawCharts(figures, section = state.displayedSection) {
       const isScatterWindDewpt = item.id === "scatter_wind_dewpt";
       return maybeSync.then(() => {
         if (isWindRosePanel) {
-          return scheduleWindRoseResize(host);
+          return scheduleWindRoseResize(host).then(() => ensureWindRoseCalmLayerOrder(host));
         }
         if (isScatterWindDewpt) {
           return relayoutScatterWindDewptAxes(host, targetChartHeight);
@@ -7457,18 +7833,20 @@ async function drawCharts(figures, section = state.displayedSection) {
     });
     }).catch((error) => {
       logChartRenderWarning(item.id, error);
+    }).finally(() => {
+      reportChartComplete();
     });
   });
-
-  for (let i = visibleFigures.length; i < els.charts.length; i += 1) {
-    clearChart(i);
-  }
 
   if (Number.isInteger(state.maximizedChartIndex) && state.maximizedChartIndex >= visibleFigures.length) {
     state.maximizedChartIndex = null;
   }
 
   await Promise.all(renderPromises);
+
+  for (let i = visibleFigures.length; i < els.charts.length; i += 1) {
+    clearChart(i);
+  }
 
   applyMaximizedChartState();
   updateChartToolbars(section);
@@ -7485,11 +7863,17 @@ async function drawCharts(figures, section = state.displayedSection) {
 
   const windRoseIndex = visibleFigures.findIndex((item) => item.id === "wind_rose");
   if (windRoseIndex >= 0 && windRoseToolbarSections().has(section)) {
-    await scheduleWindRoseResize(els.charts[windRoseIndex]);
+    const windRoseHost = els.charts[windRoseIndex];
+    await scheduleWindRoseResize(windRoseHost);
+    await ensureWindRoseCalmLayerOrder(windRoseHost);
+    deferWindRoseCalmDomHover(windRoseHost);
   }
 }
 
-let pendingFetch = null;
+async function drawCharts(figures, section = state.displayedSection, onProgress) {
+  return renderChartsToDom(figures, section, onProgress);
+}
+
 let hasShownInitialLoading = false;
 let fetchDebounceTimer = null;
 let chartContainerResizeObserversInitialized = false;
@@ -7923,6 +8307,548 @@ function restyleLightningHeatmapScale(host, { zmin = 0, zmax = 1 } = {}) {
     ]);
   }
   return Plotly.restyle(host, lightningHeatmapRestylePatch(null, { zmin, zmax }), [indices[0]]);
+}
+
+function isWindRoseCalmTrace(trace) {
+  return trace?.type === "scatterpolar" && String(trace?.name || "") === "Calm";
+}
+
+function windRoseTraceHoverFill(trace) {
+  const raw = trace?.fillcolor || trace?.marker?.color || trace?.line?.color || "#fafcff";
+  const rgbaMatch = String(raw).match(/rgba?\(([^)]+)\)/i);
+  if (!rgbaMatch) {
+    return String(raw);
+  }
+  const parts = rgbaMatch[1].split(",").map((part) => part.trim());
+  if (parts.length < 3) {
+    return String(raw);
+  }
+  const base = parts.slice(0, 3).map((part) => Number.parseFloat(part));
+  if (base.some((channel) => !Number.isFinite(channel))) {
+    return String(raw);
+  }
+  const alpha = parts.length >= 4 ? Number.parseFloat(parts[3]) : 1;
+  if (!Number.isFinite(alpha)) {
+    return String(raw);
+  }
+  const blend = (channel) => Math.round(channel * alpha + 255 * (1 - alpha));
+  return `rgb(${blend(base[0])}, ${blend(base[1])}, ${blend(base[2])})`;
+}
+
+const WIND_ROSE_HOVER_LABEL_STROKE = "rgb(68, 68, 68)";
+const WIND_ROSE_HOVER_LABEL_TEXT = "rgb(68, 68, 68)";
+
+function windRoseHoverLabelFont(host) {
+  const font = host?._fullLayout?.hoverlabel?.font || {};
+  return {
+    family: font.family || "Arial, sans-serif",
+    size: Number(font.size) || 13,
+  };
+}
+
+function clientToPlotSvgPoint(host, clientX, clientY) {
+  const svg = host.querySelector(".main-svg") || host.querySelector("svg");
+  if (!svg?.createSVGPoint || typeof svg.getScreenCTM !== "function") {
+    return { x: clientX, y: clientY };
+  }
+  const ctm = svg.getScreenCTM();
+  if (!ctm) {
+    return { x: clientX, y: clientY };
+  }
+  const point = svg.createSVGPoint();
+  point.x = clientX;
+  point.y = clientY;
+  const local = point.matrixTransform(ctm.inverse());
+  return { x: local.x, y: local.y };
+}
+
+function clearWindRoseCalmHoverLayer(host) {
+  host?.querySelector('.hoverlayer [data-wind-rose-calm-hover="true"]')?.remove();
+}
+
+function buildWindRoseCalmHoverPath(textBBox, lineCount, fontSize) {
+  const x0 = textBBox.x - 3;
+  const y0 = textBBox.y - 3;
+  const lineHeight = fontSize * 1.3;
+  const contentHeight = lineCount <= 1
+    ? fontSize
+    : fontSize + lineHeight * (lineCount - 1);
+  const x1 = textBBox.x + textBBox.width + 3;
+  const y1 = textBBox.y + Math.max(textBBox.height, contentHeight) + 3;
+  const height = y1 - 6;
+  const width = x1 - 6;
+  return `M0,0L6,6v${height}h${width}v${y0 - y1}H6V${y0}Z`;
+}
+
+function buildWindRoseCalmHoverGroup(host, calmTrace, calmPct) {
+  const font = windRoseHoverLabelFont(host);
+  const fill = windRoseTraceHoverFill(calmTrace);
+  const lines = [
+    "Speed: Calm",
+    `Frequency: ${Number(calmPct).toFixed(2)}%`,
+  ];
+  const ns = "http://www.w3.org/2000/svg";
+  const g = document.createElementNS(ns, "g");
+  g.classList.add("hovertext");
+  g.setAttribute("data-wind-rose-calm-hover", "true");
+  g.setAttribute("pointer-events", "none");
+
+  const text = document.createElementNS(ns, "text");
+  text.classList.add("nums");
+  text.setAttribute("text-anchor", "start");
+  text.setAttribute("data-notex", "1");
+  text.style.fontFamily = font.family;
+  text.style.fontSize = `${font.size}px`;
+  text.style.fontWeight = "normal";
+  text.style.fontStyle = "normal";
+  text.style.fontVariant = "normal";
+  text.style.fill = WIND_ROSE_HOVER_LABEL_TEXT;
+  text.style.whiteSpace = "pre";
+
+  const textX = 9;
+  const textY = -12.4;
+  text.setAttribute("x", String(textX));
+  text.setAttribute("y", String(textY));
+  lines.forEach((line, index) => {
+    const tspan = document.createElementNS(ns, "tspan");
+    tspan.classList.add("line");
+    tspan.textContent = line;
+    tspan.setAttribute("x", String(textX));
+    tspan.setAttribute("y", String(textY));
+    tspan.setAttribute("dy", index === 0 ? "0em" : "1.3em");
+    text.appendChild(tspan);
+  });
+  g.appendChild(text);
+
+  const hoverLayer = host.querySelector(".hoverlayer");
+  if (!hoverLayer) {
+    return null;
+  }
+  hoverLayer.appendChild(g);
+  const textBBox = text.getBBox();
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", buildWindRoseCalmHoverPath(textBBox, lines.length, font.size));
+  path.style.fill = fill;
+  path.style.stroke = WIND_ROSE_HOVER_LABEL_STROKE;
+  path.style.strokeWidth = "1px";
+  g.insertBefore(path, text);
+  return g;
+}
+
+function windRoseCalmPct(trace) {
+  const rVals = numericArray(trace?.r);
+  if (rVals.length) {
+    return Math.max(...rVals);
+  }
+  const metaPct = Number(trace?.meta?.calmPct);
+  return Number.isFinite(metaPct) ? metaPct : null;
+}
+
+const WIND_ROSE_CALM_ZORDER = 10;
+const WIND_ROSE_PETAL_ZORDER = 0;
+const WIND_ROSE_CALM_BAR_MASK_ID = "wind-rose-calm-bar-mask";
+
+function applyWindRoseCalmVisualTrace(trace) {
+  if (!trace) {
+    return;
+  }
+  trace.showlegend = true;
+  trace.zorder = WIND_ROSE_CALM_ZORDER;
+  trace.hoverinfo = "skip";
+  delete trace.hoveron;
+  delete trace.hovertemplate;
+  delete trace.hoverlabel;
+  delete trace.text;
+  delete trace.marker;
+  delete trace.customdata;
+}
+
+function normalizeWindRoseCalmTrace(figure) {
+  const data = figure?.data;
+  if (!Array.isArray(data)) {
+    return;
+  }
+
+  data.forEach((trace) => {
+    if (trace?.type === "barpolar") {
+      trace.zorder = WIND_ROSE_PETAL_ZORDER;
+    }
+  });
+
+  const calmIndex = data.findIndex((trace) => isWindRoseCalmTrace(trace));
+  if (calmIndex < 0) {
+    return;
+  }
+
+  applyWindRoseCalmVisualTrace(data[calmIndex]);
+  if (calmIndex !== data.length - 1) {
+    const [calmTrace] = data.splice(calmIndex, 1);
+    data.push(calmTrace);
+  }
+}
+
+const windRoseCalmDomHoverState = new WeakMap();
+
+function windRoseCalmVisualTrace(host) {
+  return (host?.data || []).find((trace) => isWindRoseCalmTrace(trace));
+}
+
+function hideWindRoseCalmDomTooltip(host) {
+  clearWindRoseCalmHoverLayer(host);
+}
+
+function showWindRoseCalmDomTooltip(host, clientX, clientY, calmTrace, calmPct) {
+  const pctKey = Number(calmPct).toFixed(2);
+  let hoverGroup = host.querySelector('.hoverlayer [data-wind-rose-calm-hover="true"]');
+  if (!hoverGroup || hoverGroup.dataset.calmPct !== pctKey) {
+    if (typeof Plotly?.Fx?.unhover === "function") {
+      Plotly.Fx.unhover(host);
+    }
+    clearWindRoseCalmHoverLayer(host);
+    hoverGroup = buildWindRoseCalmHoverGroup(host, calmTrace, calmPct);
+    if (hoverGroup) {
+      hoverGroup.dataset.calmPct = pctKey;
+    }
+  }
+  if (!hoverGroup) {
+    return;
+  }
+  const anchor = clientToPlotSvgPoint(host, clientX, clientY);
+  hoverGroup.setAttribute("transform", `translate(${anchor.x},${anchor.y})`);
+}
+
+function teardownWindRoseCalmDomHover(host) {
+  const state = windRoseCalmDomHoverState.get(host);
+  if (!state) {
+    clearWindRoseCalmBarMask(host);
+    return;
+  }
+  host.removeEventListener("mousemove", state.onMouseMove);
+  host.removeEventListener("mouseleave", state.onMouseLeave);
+  host.off?.("plotly_afterplot", state.onAfterPlot);
+  host.off?.("plotly_relayout", state.onAfterPlot);
+  host.off?.("plotly_hover", state.onPlotlyHover);
+  clearWindRoseCalmHoverLayer(host);
+  clearWindRoseCalmBarMask(host);
+  windRoseCalmDomHoverState.delete(host);
+}
+
+function ensureWindRoseCalmDomHover(host) {
+  if (!host?.dataset || host.dataset.figureId !== "wind_rose") {
+    return;
+  }
+
+  const calmTrace = windRoseCalmVisualTrace(host);
+  if (!calmTrace || !isTraceVisible(calmTrace)) {
+    teardownWindRoseCalmDomHover(host);
+    return;
+  }
+  const calmPct = windRoseCalmPct(calmTrace);
+  if (!Number.isFinite(calmPct) || calmPct <= 0) {
+    teardownWindRoseCalmDomHover(host);
+    return;
+  }
+
+  let state = windRoseCalmDomHoverState.get(host);
+  if (!state) {
+    const onMouseMove = (event) => {
+      const liveCalmTrace = windRoseCalmVisualTrace(host);
+      const liveCalmPct = windRoseCalmPct(liveCalmTrace);
+      if (!liveCalmTrace || !Number.isFinite(liveCalmPct) || liveCalmPct <= 0) {
+        hideWindRoseCalmDomTooltip(host);
+        return;
+      }
+      if (!isPointerInsideWindRoseCalmDisc(host, event.clientX, event.clientY)) {
+        hideWindRoseCalmDomTooltip(host);
+        return;
+      }
+      showWindRoseCalmDomTooltip(host, event.clientX, event.clientY, liveCalmTrace, liveCalmPct);
+    };
+    const onMouseLeave = () => hideWindRoseCalmDomTooltip(host);
+    const onAfterPlot = () => {
+      hideWindRoseCalmDomTooltip(host);
+      ensureWindRoseCalmBarMask(host);
+    };
+    const onPlotlyHover = (event) => {
+      const points = event?.points || [];
+      if (points.some((pt) => pt?.data?.type === "barpolar")) {
+        hideWindRoseCalmDomTooltip(host);
+      }
+    };
+
+    host.addEventListener("mousemove", onMouseMove, { passive: true });
+    host.addEventListener("mouseleave", onMouseLeave, { passive: true });
+    host.on?.("plotly_afterplot", onAfterPlot);
+    host.on?.("plotly_relayout", onAfterPlot);
+    host.on?.("plotly_hover", onPlotlyHover);
+    state = { onMouseMove, onMouseLeave, onAfterPlot, onPlotlyHover };
+    windRoseCalmDomHoverState.set(host, state);
+  }
+}
+
+function deferWindRoseCalmDomHover(host) {
+  if (!host) {
+    return;
+  }
+  window.setTimeout(() => ensureWindRoseCalmDomHover(host), 0);
+}
+
+function windRoseCalmDiscGeometry(host) {
+  const calmTrace = windRoseCalmVisualTrace(host);
+  const calmPct = windRoseCalmPct(calmTrace);
+  if (!calmTrace || !isTraceVisible(calmTrace) || !Number.isFinite(calmPct) || calmPct <= 0) {
+    return null;
+  }
+
+  const polar = host?._fullLayout?.polar;
+  const subplot = polar?._subplot;
+  if (!subplot || !Number.isFinite(subplot.cx) || !Number.isFinite(subplot.cy)) {
+    return null;
+  }
+
+  const plotRadius = Number(subplot.r);
+  if (!Number.isFinite(plotRadius) || plotRadius <= 0) {
+    return null;
+  }
+
+  const range = polar?.radialaxis?.range || [0, 35];
+  const span = Math.max((Number(range[1]) || 35) - (Number(range[0]) || 0), 0.001);
+  const dataRatio = Math.max(0, Math.min(calmPct / span, 1));
+  const holeRadius = plotRadius * dataRatio;
+  if (!Number.isFinite(holeRadius) || holeRadius <= 0) {
+    return null;
+  }
+
+  return {
+    cx: subplot.cx,
+    cy: subplot.cy,
+    r: holeRadius,
+  };
+}
+
+function windRoseCalmSubplotRadius(host) {
+  return windRoseCalmDiscGeometry(host);
+}
+
+function refreshWindRoseCalmBarMask(host) {
+  if (!host?.dataset || host.dataset.figureId !== "wind_rose") {
+    return Promise.resolve();
+  }
+  const calmTrace = windRoseCalmVisualTrace(host);
+  if (!calmTrace || !isTraceVisible(calmTrace)) {
+    clearWindRoseCalmBarMask(host);
+    return Promise.resolve();
+  }
+  return scheduleWindRoseResize(host).then(() => {
+    ensureWindRoseCalmBarMask(host);
+  });
+}
+
+function clearWindRoseCalmBarMask(host) {
+  host?.querySelector(".barlayer")?.removeAttribute("mask");
+}
+
+function ensureWindRoseCalmBarMask(host) {
+  if (!host?.querySelector(".barlayer")) {
+    return;
+  }
+
+  const calmDisc = windRoseCalmSubplotRadius(host);
+  if (!calmDisc) {
+    clearWindRoseCalmBarMask(host);
+    return;
+  }
+
+  const svg = host.querySelector(".main-svg") || host.querySelector("svg");
+  const barlayer = host.querySelector(".barlayer");
+  if (!svg || !barlayer) {
+    return;
+  }
+
+  const ns = "http://www.w3.org/2000/svg";
+  let defs = svg.querySelector("defs");
+  if (!defs) {
+    defs = document.createElementNS(ns, "defs");
+    svg.insertBefore(defs, svg.firstChild);
+  }
+
+  let mask = defs.querySelector(`#${WIND_ROSE_CALM_BAR_MASK_ID}`);
+  if (!mask) {
+    mask = document.createElementNS(ns, "mask");
+    mask.setAttribute("id", WIND_ROSE_CALM_BAR_MASK_ID);
+    mask.setAttribute("maskUnits", "userSpaceOnUse");
+    defs.appendChild(mask);
+  }
+
+  while (mask.firstChild) {
+    mask.removeChild(mask.firstChild);
+  }
+
+  const width = Number(svg.getAttribute("width")) || svg.clientWidth || 800;
+  const height = Number(svg.getAttribute("height")) || svg.clientHeight || 600;
+  const backdrop = document.createElementNS(ns, "rect");
+  backdrop.setAttribute("x", "0");
+  backdrop.setAttribute("y", "0");
+  backdrop.setAttribute("width", String(width));
+  backdrop.setAttribute("height", String(height));
+  backdrop.setAttribute("fill", "white");
+
+  const hole = document.createElementNS(ns, "circle");
+  hole.setAttribute("cx", String(calmDisc.cx));
+  hole.setAttribute("cy", String(calmDisc.cy));
+  hole.setAttribute("r", String(calmDisc.r));
+  hole.setAttribute("fill", "black");
+
+  mask.appendChild(backdrop);
+  mask.appendChild(hole);
+  barlayer.setAttribute("mask", `url(#${WIND_ROSE_CALM_BAR_MASK_ID})`);
+}
+
+function ensureWindRoseCalmLayerOrder(host) {
+  if (!host?.data?.length || typeof Plotly?.restyle !== "function") {
+    const calmTrace = windRoseCalmVisualTrace(host);
+    if (!calmTrace || !isTraceVisible(calmTrace)) {
+      clearWindRoseCalmBarMask(host);
+    } else {
+      ensureWindRoseCalmBarMask(host);
+    }
+    return Promise.resolve();
+  }
+
+  const calmIndex = host.data.findIndex((trace) => isWindRoseCalmTrace(trace));
+  if (calmIndex < 0) {
+    clearWindRoseCalmBarMask(host);
+    return Promise.resolve();
+  }
+
+  const calmTrace = host.data[calmIndex];
+  if (!isTraceVisible(calmTrace)) {
+    clearWindRoseCalmBarMask(host);
+    return Promise.resolve();
+  }
+
+  const barIndices = host.data
+    .map((trace, index) => (trace?.type === "barpolar" ? index : -1))
+    .filter((index) => index >= 0);
+  const lastIndex = host.data.length - 1;
+  const ops = [];
+
+  if (calmIndex !== lastIndex && typeof Plotly.moveTraces === "function") {
+    ops.push(Promise.resolve(Plotly.moveTraces(host, calmIndex, lastIndex)));
+  }
+
+  const liveCalmIndex = () => host.data.findIndex((trace) => isWindRoseCalmTrace(trace));
+  const calmVisible = calmTrace.visible ?? true;
+  ops.push(
+    Promise.resolve(Plotly.restyle(host, {
+      visible: calmVisible,
+      zorder: WIND_ROSE_CALM_ZORDER,
+    }, [liveCalmIndex()])),
+  );
+
+  if (barIndices.length) {
+    ops.push(Promise.resolve(Plotly.restyle(host, {
+      zorder: barIndices.map(() => WIND_ROSE_PETAL_ZORDER),
+    }, barIndices)));
+  }
+
+  return Promise.all(ops)
+    .then(() => refreshWindRoseCalmBarMask(host))
+    .catch(() => {
+      clearWindRoseCalmBarMask(host);
+      return undefined;
+    });
+}
+
+function windRosePolarScreenMetrics(host) {
+  const fullLayout = host?._fullLayout || host?.layout;
+  const polar = fullLayout?.polar;
+  if (!polar) {
+    return null;
+  }
+
+  const range = polar.radialaxis?.range || [0, 35];
+  const r0 = Number(range[0]) || 0;
+  const r1 = Number(range[1]) || 35;
+  const span = Math.max(r1 - r0, 0.001);
+
+  const mainSvg = host.querySelector(".main-svg") || host.querySelector("svg.main-svg") || host.querySelector("svg");
+  const subplot = polar._subplot;
+  if (
+    Number.isFinite(subplot?.cx)
+    && Number.isFinite(subplot?.cy)
+    && Number.isFinite(subplot?.r)
+    && mainSvg
+  ) {
+    const ctm = mainSvg.getScreenCTM?.();
+    if (ctm && typeof mainSvg.createSVGPoint === "function") {
+      const point = mainSvg.createSVGPoint();
+      point.x = subplot.cx;
+      point.y = subplot.cy;
+      const center = point.matrixTransform(ctm);
+      const edge = mainSvg.createSVGPoint();
+      edge.x = subplot.cx + subplot.r;
+      edge.y = subplot.cy;
+      const edgeScreen = edge.matrixTransform(ctm);
+      return {
+        cx: center.x,
+        cy: center.y,
+        plotRadiusPx: Math.hypot(edgeScreen.x - center.x, edgeScreen.y - center.y),
+        span,
+      };
+    }
+  }
+
+  const hostRect = host?.getBoundingClientRect?.();
+  if (!hostRect?.width || !hostRect?.height) {
+    return null;
+  }
+
+  const margin = fullLayout.margin || {};
+  const marginLeft = Number(margin.l) || 0;
+  const marginRight = Number(margin.r) || 0;
+  const marginTop = Number(margin.t) || 0;
+  const marginBottom = Number(margin.b) || 0;
+  const plotWidth = Math.max(hostRect.width - marginLeft - marginRight, 1);
+  const plotHeight = Math.max(hostRect.height - marginTop - marginBottom, 1);
+
+  const domain = polar.domain || TOPO_MAP_PANEL.plotDomain;
+  const domainX = Array.isArray(domain.x) ? domain.x : TOPO_MAP_PANEL.plotDomain.x;
+  const domainY = Array.isArray(domain.y) ? domain.y : TOPO_MAP_PANEL.plotDomain.y;
+  const domainWidth = Math.max(Number(domainX[1]) - Number(domainX[0]), 0.001);
+  const domainHeight = Math.max(Number(domainY[1]) - Number(domainY[0]), 0.001);
+  const cx = hostRect.left + marginLeft + ((Number(domainX[0]) + Number(domainX[1])) / 2) * plotWidth;
+  const cy = hostRect.top + marginTop + (1 - ((Number(domainY[0]) + Number(domainY[1])) / 2)) * plotHeight;
+  const plotRadiusPx = Math.min(domainWidth * plotWidth, domainHeight * plotHeight) / 2;
+
+  return { cx, cy, plotRadiusPx, span };
+}
+
+function windRoseCalmDiscRadiusPx(host) {
+  const calmTrace = (host?.data || []).find((trace) => isWindRoseCalmTrace(trace));
+  if (!calmTrace || !isTraceVisible(calmTrace)) {
+    return null;
+  }
+  const calmPct = windRoseCalmPct(calmTrace);
+  if (!Number.isFinite(calmPct) || calmPct <= 0) {
+    return null;
+  }
+
+  const polarMetrics = windRosePolarScreenMetrics(host);
+  if (!polarMetrics) {
+    return null;
+  }
+
+  return Math.max((calmPct / polarMetrics.span) * polarMetrics.plotRadiusPx, 2);
+}
+
+function isPointerInsideWindRoseCalmDisc(host, clientX, clientY) {
+  const radiusPx = windRoseCalmDiscRadiusPx(host);
+  const polar = windRosePolarScreenMetrics(host);
+  if (!radiusPx || !polar || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    return false;
+  }
+  return Math.hypot(clientX - polar.cx, clientY - polar.cy) <= radiusPx;
 }
 
 function windRoseRadialMax(figure) {
@@ -8474,212 +9400,157 @@ function scheduleFetchCharts(delayMs = 0) {
 }
 
 async function fetchChartsLite() {
-  stopWindRosePlayback();
-  stopLightningPlayback();
-  clearChartAxisLocks();
-  const icao = els.icao.value;
-  const section = state.requestedSection;
-  if (state.displayedSection !== section) {
-    resetMaximizedChartState();
-    resetWindRoseModeOnSectionChange(section);
-    resetLightningHeatmapModeOnSectionChange(section);
-  }
-  const season = els.season.value;
+  return runViewTransition({
+    message: "Fetching static data...",
+    prepare: () => {
+      stopWindRosePlayback();
+      stopLightningPlayback();
+      clearChartAxisLocks();
+    },
+    load: async ({ reportFetchProgress }) => {
+      const icao = els.icao.value;
+      const section = state.requestedSection;
+      const season = els.season.value;
+      const sectionChanging = state.displayedSection !== section;
 
-  showLoading("Fetching static data...");
-  try {
-    let data = await assembleLiteFigures(icao, section, season);
-
-    if (!data?.figures?.length) {
-      const manifestAirports = liteManifestAirports();
-      const inManifest = manifestAirports.includes(String(icao || "").trim().toUpperCase());
-      if (!inManifest) {
-        data = { figures: [], metrics: {}, error: `Airport ${icao} is not in the lite manifest.` };
-      } else {
-        data = { figures: [], metrics: {} };
+      if (sectionChanging) {
+        resetWindRoseModeOnSectionChange(section);
+        resetLightningHeatmapModeOnSectionChange(section);
       }
-    }
 
-    if (shouldUseHourlyWindRose(section)) {
-      await applyHourlyWindRoseOverride(data, icao, season);
-    }
+      let data = await assembleLiteFigures(icao, section, season, reportFetchProgress);
 
-    if (shouldUseHourlyLightningHeatmap(section)) {
-      await applyHourlyLightningHeatmapOverride(data, icao, season);
-    }
+      if (!data?.figures?.length) {
+        const manifestAirports = liteManifestAirports();
+        const inManifest = manifestAirports.includes(String(icao || "").trim().toUpperCase());
+        if (!inManifest) {
+          data = { figures: [], metrics: {}, error: `Airport ${icao} is not in the lite manifest.` };
+        } else {
+          data = { figures: [], metrics: {} };
+        }
+      }
 
-    if (data.error) {
-      throw new Error(data.error);
-    }
+      if (shouldUseHourlyWindRose(section)) {
+        reportFetchProgress(1, 1, "Preparing wind rose...");
+        await applyHourlyWindRoseOverride(data, icao, season);
+      }
 
-    state.displayedSection = section;
-    applySectionLayout();
-    await drawCharts(data.figures || [], section);
-    renderMetrics(data.metrics || {}, section);
-    setStatus("");
-    hideLoading();
-  } catch (e) {
-    console.error(e);
-    if (!isBenignChartRenderError(e)) {
-      setStatus(`Error: ${e.message}`);
-    } else {
-      setStatus("");
-    }
-    hideLoading();
-  }
+      if (shouldUseHourlyLightningHeatmap(section)) {
+        reportFetchProgress(1, 1, "Preparing lightning heatmap...");
+        await applyHourlyLightningHeatmapOverride(data, icao, season);
+      }
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      return {
+        section,
+        figures: data.figures || [],
+        metrics: data.metrics || {},
+        shouldResetMaximize: sectionChanging,
+      };
+    },
+  });
 }
 
 async function fetchCharts() {
   if (state.liteMode) {
     return fetchChartsLite();
   }
+
   stopWindRosePlayback();
   clearChartAxisLocks();
   if (!validateRanges()) {
     return;
   }
 
-  const showOverlay = true;
-  const requestedSection = state.requestedSection;
-  if (state.displayedSection !== requestedSection) {
-    resetMaximizedChartState();
-    resetWindRoseModeOnSectionChange(requestedSection);
-  }
+  return runViewTransition({
+    message: "Loading charts...",
+    load: async ({ signal, reportFetchProgress }) => {
+      const requestedSection = state.requestedSection;
+      const sectionChanging = state.displayedSection !== requestedSection;
 
-  const controller = new AbortController();
-  if (pendingFetch) {
-    pendingFetch.abort();
-  }
-  pendingFetch = controller;
-
-  if (showOverlay) {
-    showLoading("Loading charts...");
-  }
-
-  try {
-    const batches = getSectionFigureBatches(requestedSection);
-    const allFigures = [];
-    let combinedMetrics = {};
-    let combinedWarning = "";
-
-    if (shouldUseHourlyWindRose(requestedSection)) {
-      await fetchWindRoseDailySnapshot(requestedSection, controller.signal);
-      if (controller.signal.aborted) {
-        return;
-      }
-    }
-
-    if (showOverlay) {
-      setLoadingState(20, `Processing data (0/${batches.length})...`);
-    }
-
-    let completedBatches = 0;
-    const batchPromises = batches.map((batch, index) => {
-      const params = getParams();
-      if (batch.length) {
-        params.set("figureIds", batch.join(","));
-        applyWindRoseHourParams(params, batch);
-      }
-      if (index > 0) {
-        params.set("includeMetrics", "false");
+      if (sectionChanging) {
+        resetWindRoseModeOnSectionChange(requestedSection);
       }
 
-      return fetch(apiUrl(`/api/charts?${params.toString()}`), { signal: controller.signal })
-        .then((res) => res.json())
-        .then((data) => {
-          completedBatches += 1;
-          if (!controller.signal.aborted && showOverlay) {
-            const batchProgress = 20 + Math.floor((completedBatches / batches.length) * 45);
-            setLoadingState(batchProgress, `Processing data (${completedBatches}/${batches.length})...`);
-          }
-          return { index, data };
-        });
-    });
+      const batches = getSectionFigureBatches(requestedSection);
+      const allFigures = [];
+      let combinedMetrics = {};
+      let combinedWarning = "";
 
-    const batchResults = await Promise.all(batchPromises);
+      if (shouldUseHourlyWindRose(requestedSection)) {
+        reportFetchProgress(0, batches.length + 1, "Preparing wind rose...");
+        await fetchWindRoseDailySnapshot(requestedSection, signal);
+        if (signal.aborted) {
+          const err = new Error("Aborted");
+          err.name = "AbortError";
+          throw err;
+        }
+      }
 
-    if (controller.signal.aborted) {
-      return;
-    }
-
-    batchResults
-      .sort((a, b) => a.index - b.index)
-      .forEach(({ data }) => {
-        if (data.error) {
-          throw new Error(data.error);
+      let completedBatches = 0;
+      const batchPromises = batches.map((batch, index) => {
+        const params = getParams();
+        if (batch.length) {
+          params.set("figureIds", batch.join(","));
+          applyWindRoseHourParams(params, batch);
+        }
+        if (index > 0) {
+          params.set("includeMetrics", "false");
         }
 
-        if (data.warning && !combinedWarning) {
-          combinedWarning = data.warning;
-        }
-        if (data.metrics && Object.keys(data.metrics).length > 0 && Object.keys(combinedMetrics).length === 0) {
-          combinedMetrics = data.metrics;
-        }
-        if (Array.isArray(data.figures) && data.figures.length > 0) {
-          allFigures.push(...data.figures);
-        }
+        return fetch(apiUrl(`/api/charts?${params.toString()}`), { signal })
+          .then((res) => res.json())
+          .then((data) => {
+            completedBatches += 1;
+            if (!signal.aborted) {
+              reportFetchProgress(
+                completedBatches,
+                batches.length,
+                `Processing data (${completedBatches}/${batches.length})...`,
+              );
+            }
+            return { index, data };
+          });
       });
 
-    const data = {
-      figures: allFigures,
-      metrics: combinedMetrics,
-      warning: combinedWarning,
-    };
-    if (showOverlay) {
-      setLoadingState(82, "Rendering charts...");
-    }
+      const batchResults = await Promise.all(batchPromises);
 
-    if (controller.signal.aborted) {
-      return;
-    }
-
-    if (data.error) {
-      setStatus(data.error);
-      return;
-    }
-
-    if (data.warning) {
-      setStatus(data.warning);
-    } else {
-      setStatus("");
-    }
-
-    // Ensure section-specific layout/toolbars are applied before Plotly sizing.
-    state.displayedSection = requestedSection;
-    applySectionLayout(requestedSection);
-
-    await drawCharts(data.figures || [], requestedSection);
-
-    if (controller.signal.aborted) {
-      return;
-    }
-
-    renderMetrics(data.metrics, requestedSection);
-  } catch (err) {
-    if (err.name !== "AbortError") {
-      if (err?.message && !isBenignChartRenderError(err)) {
-        setStatus(err.message);
-        return;
+      if (signal.aborted) {
+        const err = new Error("Aborted");
+        err.name = "AbortError";
+        throw err;
       }
-      if (isBenignChartRenderError(err)) {
-        setStatus("");
-        return;
-      }
-      if (window.location.hostname.endsWith("github.io") && !API_BASE) {
-        setStatus("Failed to load charts. Set AVCLIMATE_API_BASE in config.js to your deployed backend URL.");
-      } else {
-        setStatus("Failed to load charts.");
-      }
-    }
-  } finally {
-    if (pendingFetch === controller) {
-      pendingFetch = null;
-      if (showOverlay) {
-        hasShownInitialLoading = true;
-        hideLoading();
-      }
-    }
-  }
+
+      batchResults
+        .sort((a, b) => a.index - b.index)
+        .forEach(({ data }) => {
+          if (data.error) {
+            throw new Error(data.error);
+          }
+
+          if (data.warning && !combinedWarning) {
+            combinedWarning = data.warning;
+          }
+          if (data.metrics && Object.keys(data.metrics).length > 0 && Object.keys(combinedMetrics).length === 0) {
+            combinedMetrics = data.metrics;
+          }
+          if (Array.isArray(data.figures) && data.figures.length > 0) {
+            allFigures.push(...data.figures);
+          }
+        });
+
+      return {
+        section: requestedSection,
+        figures: allFigures,
+        metrics: combinedMetrics,
+        shouldResetMaximize: sectionChanging,
+        warning: combinedWarning,
+      };
+    },
+  });
 }
 
 function wireControls() {

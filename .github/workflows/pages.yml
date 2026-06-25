@@ -35,8 +35,15 @@ jobs:
           manifest_path = Path("webapp/frontend/data-lite/manifest.json")
           manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
           airports = manifest.get("airports") or manifest.get("icaos") or []
-          if len(airports) < 212:
-              print(f"Expected 212 airports, found {len(airports)}")
+          if len(airports) < 216:
+              print(f"Expected 216 airports, found {len(airports)}")
+              sys.exit(1)
+          missing_topo = [
+              icao for icao in airports
+              if not Path(f"webapp/frontend/data-lite/{icao}/topo.png").is_file()
+          ]
+          if missing_topo:
+              print(f"Missing topo.png for: {missing_topo[:5]}")
               sys.exit(1)
           print(f"Lite manifest OK: {len(airports)} airports, version {manifest.get('version')}")
           PY

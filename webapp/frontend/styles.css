@@ -624,12 +624,16 @@ body.lite-mode .lite-only {
 .loading-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(235, 239, 244, 0.82);
+  background: rgba(235, 239, 244, 0.88);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
+  transition: opacity 0.25s ease, visibility 0.25s ease, background 0.2s ease;
+}
+
+.loading-overlay.is-rendering {
+  background: rgba(235, 239, 244, 0.97);
 }
 
 .loading-overlay.hidden {
@@ -703,6 +707,11 @@ body.lite-mode .lite-only {
   /* Lock layout and optionally dim charts while loading */
   pointer-events: none;
   filter: grayscale(0.2) brightness(0.97);
+}
+
+.chart-grid.is-pending-reveal,
+.metrics.is-pending-reveal {
+  visibility: hidden;
 }
 
 

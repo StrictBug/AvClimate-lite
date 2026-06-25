@@ -22,6 +22,7 @@ PRECIP_COLUMNS = (
     "hour",
     "TM_FULL",
     "WND_DIR",
+    "WND_SPD",
     "VSBY",
     "AWS_VSBY",
     "PRCP_10",
@@ -307,6 +308,8 @@ def build_airport_payload(icao: str, climate: pd.DataFrame) -> dict[str, list[di
     vis_df = precip_df.copy()
     vis_df["chart_vsby"] = vis_df[["VSBY", "AWS_VSBY"]].apply(pd.to_numeric, errors="coerce").min(axis=1)
     vis_df = vis_df.dropna(subset=["WND_DIR", "chart_vsby"]).copy()
+    if not vis_df.empty:
+        vis_df = vis_df[backend.directional_wind_mask(vis_df["WND_SPD"], vis_df["WND_DIR"])].copy()
     if not vis_df.empty:
         precip_obs = vis_df[_split_precip_mask(vis_df)].copy()
         if not precip_obs.empty:
