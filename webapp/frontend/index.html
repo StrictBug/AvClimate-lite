@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="styles.css?v=__ASSET_VERSION__">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
-<body>
+<body class="lite-mode">
   <div class="loading-overlay hidden" id="loading-overlay" role="status" aria-live="polite">
     <div class="loading-card">
       <div class="loading-title">Loading data</div>
@@ -52,52 +52,6 @@
           <option value="spring">Spring</option>
           <option value="tropical_wet">Tropical wet</option>
           <option value="tropical_dry">Tropical dry</option>
-        </select>
-      </label>
-
-      <label class="control api-only">
-        <span>ENSO</span>
-        <select id="enso">
-          <option value="all" selected>All</option>
-          <option value="el_nino">El Nino</option>
-          <option value="la_nina">La Nina</option>
-          <option value="neutral">Neutral</option>
-        </select>
-      </label>
-
-      <label class="control api-only">
-        <span>IOD</span>
-        <select id="iod">
-          <option value="all" selected>All</option>
-          <option value="positive_iod">Positive IOD</option>
-          <option value="negative_iod">Negative IOD</option>
-          <option value="neutral">Neutral</option>
-        </select>
-      </label>
-
-      <label class="control api-only">
-        <span>SAM</span>
-        <select id="sam">
-          <option value="all" selected>All</option>
-          <option value="positive_sam">Positive SAM</option>
-          <option value="negative_sam">Negative SAM</option>
-          <option value="neutral">Neutral</option>
-        </select>
-      </label>
-
-      <label class="control api-only">
-        <span>MJO</span>
-        <select id="mjo">
-          <option value="all" selected>All</option>
-          <option value="inactive">Inactive</option>
-          <option value="1">Phase 1</option>
-          <option value="2">Phase 2</option>
-          <option value="3">Phase 3</option>
-          <option value="4">Phase 4</option>
-          <option value="5">Phase 5</option>
-          <option value="6">Phase 6</option>
-          <option value="7">Phase 7</option>
-          <option value="8">Phase 8</option>
         </select>
       </label>
 
@@ -175,61 +129,6 @@
          </div>
       </div>
     </div>
-
-    <section class="time-controls api-only">
-      <div class="dual-slider-grid">
-        <div class="dual-slider-block">
-          <div class="range-time-row">
-            <div class="range-time-item range-time-item-start" id="year-start-value"></div>
-            <div class="frame-slider-shell">
-              <div class="frame-slider-base"></div>
-              <div class="frame-selection-highlight" id="year-highlight"></div>
-              <input id="year-start" class="frame-bound-slider" type="range" min="2000" max="2025" step="1" value="2000">
-              <input id="year-end" class="frame-bound-slider" type="range" min="2000" max="2025" step="1" value="2025">
-            </div>
-            <div class="range-time-item range-time-item-end" id="year-end-value"></div>
-          </div>
-        </div>
-
-        <div class="dual-slider-block">
-          <div class="range-time-row">
-            <div class="range-time-item range-time-item-start" id="month-start-value"></div>
-            <div class="frame-slider-shell">
-              <div class="frame-slider-base"></div>
-              <div class="frame-selection-highlight" id="month-highlight"></div>
-              <input id="month-start" class="frame-bound-slider" type="range" min="1" max="12" step="1" value="1">
-              <input id="month-end" class="frame-bound-slider" type="range" min="1" max="12" step="1" value="12">
-            </div>
-            <div class="range-time-item range-time-item-end" id="month-end-value"></div>
-            <div class="slider-footer">
-              <label class="check-control">
-                <input id="invert-month" type="checkbox">
-                <span>Invert month range</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div class="dual-slider-block">
-          <div class="range-time-row">
-            <div class="range-time-item range-time-item-start" id="hour-start-value"></div>
-            <div class="frame-slider-shell">
-              <div class="frame-slider-base"></div>
-              <div class="frame-selection-highlight" id="hour-highlight"></div>
-              <input id="hour-start" class="frame-bound-slider" type="range" min="0" max="23" step="1" value="0">
-              <input id="hour-end" class="frame-bound-slider" type="range" min="0" max="23" step="1" value="23">
-            </div>
-            <div class="range-time-item range-time-item-end" id="hour-end-value"></div>
-            <div class="slider-footer">
-              <label class="check-control">
-                <input id="invert-hour" type="checkbox">
-                <span>Invert time range</span>
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
   </main>
 
   <script src="app.js?v=__ASSET_VERSION__"></script>

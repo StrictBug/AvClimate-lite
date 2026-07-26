@@ -15,7 +15,7 @@ const infoMetarSourceFallback =
 
 const infoLightningSourceBullets = [
   "GPATS lightning data acquired from the ADAM database: January 1, 2009 to December 31, 2013.",
-  "WZ lightning data acquired from the ADAM database: January 1, 2014 to December 31, 2024.",
+  "WZ lightning data acquired from the ADAM database: February 25, 2008 to December 31, 2024.",
 ];
 
 const infoClimateDriverSection = {
@@ -159,9 +159,12 @@ const infoFigureDetails = {
   },
   lightning_heatmap: {
     title: "Lightning Strike Frequency",
-    description: "Strike counts within a 30 km radius of the aerodrome, with 8 km and 16 km range rings.",
+    description: "Lightning heatmap with Local (30 km), Regional (GAF-area), and National zoom levels.",
     classification: [
       { term: "Grid", detail: "48 x 48 binned lightning data (~1.25km grid) within 30km of the origin" },
+      { term: "Local", detail: "Local 30 km heatmap near the aerodrome, with 8 km and 16 km range rings" },
+      { term: "Regional", detail: "0.1° Weatherzone lightning (2008–2024) over the airport GAF area (or offshore pair domain), with 8 km and 16 km range rings" },
+      { term: "National", detail: "0.1° Weatherzone lightning over the full Australia domain" },
     ],
   },
   monthly_fog: {
@@ -249,6 +252,17 @@ function apiUrl(path) {
   return API_BASE ? `${API_BASE}${path}` : path;
 }
 
+// Bump whenever the data-lite artefacts are regenerated. The static packs carry no
+// Cache-Control, so without this browsers keep serving the previous build from disk.
+const LITE_DATA_VERSION = "0.1deg-2008-2024-v3";
+
+function withLiteDataVersion(url) {
+  if (!url || /^[a-z]+:/i.test(url)) {
+    return url;
+  }
+  return `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(LITE_DATA_VERSION)}`;
+}
+
 const state = {
   requestedSection: "overview",
   displayedSection: "overview",
@@ -269,6 +283,7 @@ const state = {
   airportCoverage: null,
   wrMode: "summary", // 'summary' or 'hourly'
   lhMode: "summary", // 'summary' or 'hourly' (lightning heatmap)
+  lhZoom: "local", // 'local' | 'gaf' | 'region'
   windRoseLayoutRef: {},
   windRoseSummaryFigure: {},
   windRoseHourlyScaleRef: null,
@@ -287,7 +302,7 @@ const airportTopoCache = new Map();
 
 async function checkLiteMode() {
   try {
-    const res = await fetch("data-lite/manifest.json");
+    const res = await fetch(withLiteDataVersion("data-lite/manifest.json"));
     if (res.ok) {
       state.manifest = await res.json();
       state.liteMode = true;
@@ -298,12 +313,14 @@ async function checkLiteMode() {
   } catch (error) {
     console.warn("Lite manifest not available:", error);
   }
+  state.liteMode = false;
+  document.body.classList.remove("lite-mode");
   return false;
 }
 
 async function loadAirportCoverage() {
   try {
-    const res = await fetch("data-lite/airport-coverage.json");
+    const res = await fetch(withLiteDataVersion("data-lite/airport-coverage.json"));
     if (!res.ok) {
       return null;
     }
@@ -411,18 +428,26 @@ async function parseLiteJsonResponse(res) {
   return JSON.parse(text);
 }
 
-async function fetchJsonCached(url) {
+async function fetchJsonCached(url, { preferGzip = true } = {}) {
   if (liteCache.has(url)) return liteCache.get(url);
 
-  let res = await fetch(liteJsonGzUrl(url));
-  if (!res.ok && url !== liteJsonGzUrl(url)) {
-    res = await fetch(url);
+  const gzipUrl = liteJsonGzUrl(url);
+  let res;
+  if (preferGzip && url !== gzipUrl) {
+    res = await fetch(withLiteDataVersion(gzipUrl));
+    if (!res.ok) {
+      res = await fetch(withLiteDataVersion(url));
+    }
+  } else {
+    res = await fetch(withLiteDataVersion(url));
   }
   if (!res.ok) throw new Error(`Failed to fetch ${url}`);
 
   const data = await parseLiteJsonResponse(res);
   liteCache.set(url, data);
-  liteCache.set(liteJsonGzUrl(url), data);
+  if (url !== gzipUrl) {
+    liteCache.set(gzipUrl, data);
+  }
   return data;
 }
 
@@ -588,7 +613,7 @@ async function assembleLiteFigures(icao, section, season, onProgress) {
     modeSpecs.map(async (spec) => {
       const mode = state.fogModes[spec.modeKey] || "all";
       const shard = await fetchLiteFigureShard(icao, spec.figureId, season, mode);
-      tick(`Fetching ${spec.figureId}...`);
+      tick(`Fetching ${figureDisplayLabel(spec.figureId)}...`);
       return shard;
     }),
   );
@@ -642,7 +667,7 @@ async function refreshLiteModeFigures(modeKey) {
         specs.map(async (spec) => {
           const shard = await fetchLiteFigureShard(icao, spec.figureId, season, mode);
           completed += 1;
-          reportFetchProgress(completed, totalSteps, `Updating ${spec.figureId}...`);
+          reportFetchProgress(completed, totalSteps, `Updating ${figureDisplayLabel(spec.figureId)}...`);
           return shard;
         }),
       );
@@ -878,35 +903,11 @@ const windSectionWindToolbarId = "chart-toolbar-1";
 const precipitationLightningToolbarId = "chart-toolbar-4";
 const LIGHTNING_PLAY_INTERVAL_MS = 300;
 
-const dualSliderDefs = [
-  { key: "year", minEl: "year-start", maxEl: "year-end", highlightEl: "year-highlight", minValueEl: "year-start-value", maxValueEl: "year-end-value", format: (v) => String(v) },
-  { key: "month", minEl: "month-start", maxEl: "month-end", highlightEl: "month-highlight", invertEl: "invert-month", minValueEl: "month-start-value", maxValueEl: "month-end-value", format: (v) => state.options.months[Number(v) - 1] },
-  { key: "hour", minEl: "hour-start", maxEl: "hour-end", highlightEl: "hour-highlight", invertEl: "invert-hour", minValueEl: "hour-start-value", maxValueEl: "hour-end-value", format: (v) => `${String(v).padStart(2, "0")}Z` },
-];
-
 const els = {
   categoryRow: document.getElementById("category-row"),
   icao: document.getElementById("icao"),
   season: document.getElementById("season"),
-  enso: document.getElementById("enso"),
-  iod: document.getElementById("iod"),
-  sam: document.getElementById("sam"),
-  mjo: document.getElementById("mjo"),
   errorBarsToggle: document.getElementById("error-bars-toggle"),
-  yearStart: document.getElementById("year-start"),
-  yearEnd: document.getElementById("year-end"),
-  monthStart: document.getElementById("month-start"),
-  monthEnd: document.getElementById("month-end"),
-  hourStart: document.getElementById("hour-start"),
-  hourEnd: document.getElementById("hour-end"),
-  invertMonth: document.getElementById("invert-month"),
-  invertHour: document.getElementById("invert-hour"),
-  yearStartValue: document.getElementById("year-start-value"),
-  yearEndValue: document.getElementById("year-end-value"),
-  monthStartValue: document.getElementById("month-start-value"),
-  monthEndValue: document.getElementById("month-end-value"),
-  hourStartValue: document.getElementById("hour-start-value"),
-  hourEndValue: document.getElementById("hour-end-value"),
   status: document.getElementById("status"),
   loadingOverlay: document.getElementById("loading-overlay"),
   loadingBarFill: document.getElementById("loading-bar-fill"),
@@ -982,17 +983,34 @@ function ensureChartShell(host) {
       runViewTransition({
         message: nextMaximized === null ? "Restoring chart grid..." : "Expanding chart...",
         prepare: () => {
-          if (state.lhMode === "hourly") {
+          if (state.lhMode === "hourly" || isLightningGafZoom()) {
             resetLightningHourlyLayoutState();
           }
           invalidateCanonicalGeometryForVisibleCharts();
         },
-        load: async () => ({
-          section: state.displayedSection,
-          figures: state.latestFigures,
-          metrics: {},
-          maximizedChartIndex: nextMaximized,
-        }),
+        load: async () => {
+          let figures = state.latestFigures;
+          const lightningIndex = figures.findIndex((item) => item.id === "lightning_heatmap");
+          if (
+            isLightningGafZoom()
+            && state.displayedSection === "precipitation"
+            && lightningIndex >= 0
+          ) {
+            const payload = { figures: JSON.parse(JSON.stringify(figures)) };
+            await applyGafLightningHeatmapOverride(
+              payload,
+              els.icao.value,
+              els.season.value,
+            );
+            figures = payload.figures;
+          }
+          return {
+            section: state.displayedSection,
+            figures,
+            metrics: {},
+            maximizedChartIndex: nextMaximized,
+          };
+        },
       });
     });
     card.appendChild(maximizeButton);
@@ -1274,6 +1292,22 @@ function logChartRenderWarning(figureId, error) {
     return;
   }
   console.warn(`Chart render issue for ${label}:`, error);
+}
+
+function figureDisplayLabel(figureId) {
+  const id = String(figureId || "").trim();
+  if (!id) {
+    return "chart";
+  }
+  const title = infoFigureDetails[id]?.title;
+  if (title) {
+    return title;
+  }
+  return id
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function setLoadingState(progress, message) {
@@ -2515,6 +2549,361 @@ function buildLightningOverlayLayout(baseHost) {
   };
 }
 
+// GAF/regional hourly uses a sealed single Plotly host (no overlay div). After the
+// container CSS settles, pin width/height/margins/domains so z-only restyles cannot
+// re-solve scaleanchor or nudge the basemap image.
+async function sealGafLightningHost(host, { generation = null } = {}) {
+  const gen = generation == null ? lightningPlayback.layoutGeneration : generation;
+  if (!host || !isGafLightningFigure({ layout: host.layout })) {
+    return false;
+  }
+  if (gen !== lightningPlayback.layoutGeneration) {
+    return false;
+  }
+
+  teardownLightningOverlay();
+  await awaitLayoutSettle();
+  if (gen !== lightningPlayback.layoutGeneration) {
+    return false;
+  }
+
+  const width = Math.round(host.offsetWidth || host.clientWidth || 0);
+  const height = Math.round(host.offsetHeight || host.clientHeight || 0);
+  if (width <= 0 || height <= 0) {
+    return false;
+  }
+
+  await Plotly.relayout(host, { width, height, autosize: false });
+  await awaitLayoutSettle();
+  if (gen !== lightningPlayback.layoutGeneration) {
+    return false;
+  }
+
+  const full = host._fullLayout || {};
+  const size = full._size || {};
+  const layoutMargin = host.layout?.margin || {};
+  const meta = host.layout?.meta || {};
+  const bbox = Array.isArray(meta.gafBbox) && meta.gafBbox.length === 4 ? meta.gafBbox : null;
+  const patch = {
+    width,
+    height,
+    autosize: false,
+    "margin.l": Math.round(Number.isFinite(size.l) ? size.l : (layoutMargin.l || 0)),
+    "margin.r": Math.round(Number.isFinite(size.r) ? size.r : (layoutMargin.r || 0)),
+    "margin.t": Math.round(Number.isFinite(size.t) ? size.t : (layoutMargin.t || 0)),
+    "margin.b": Math.round(Number.isFinite(size.b) ? size.b : (layoutMargin.b || 0)),
+    "xaxis.autorange": false,
+    "yaxis.autorange": false,
+    "xaxis.scaleanchor": "y",
+    "xaxis.scaleratio": 1,
+    "xaxis.constrain": "domain",
+    "xaxis.fixedrange": true,
+    "yaxis.fixedrange": true,
+    "xaxis.automargin": false,
+    "yaxis.automargin": false,
+  };
+  if (Array.isArray(full.xaxis?.domain)) {
+    patch["xaxis.domain"] = full.xaxis.domain.slice();
+  }
+  if (Array.isArray(full.yaxis?.domain)) {
+    patch["yaxis.domain"] = full.yaxis.domain.slice();
+  }
+  if (bbox) {
+    const [latMin, latMax, lonMin, lonMax] = bbox;
+    patch["xaxis.range"] = [lonMin, lonMax];
+    patch["yaxis.range"] = [latMin, latMax];
+    if (Array.isArray(host.layout?.images) && host.layout.images.length) {
+      patch["images[0].x"] = lonMin;
+      patch["images[0].y"] = latMax;
+      patch["images[0].sizex"] = lonMax - lonMin;
+      patch["images[0].sizey"] = latMax - latMin;
+      patch["images[0].xref"] = "x";
+      patch["images[0].yref"] = "y";
+      patch["images[0].sizing"] = "stretch";
+      patch["images[0].layer"] = "below";
+    }
+  } else {
+    if (Array.isArray(full.xaxis?.range)) {
+      patch["xaxis.range"] = full.xaxis.range.slice();
+    }
+    if (Array.isArray(full.yaxis?.range)) {
+      patch["yaxis.range"] = full.yaxis.range.slice();
+    }
+  }
+
+  await Plotly.relayout(host, patch);
+  await awaitLayoutSettle();
+  if (gen !== lightningPlayback.layoutGeneration) {
+    return false;
+  }
+
+  const ctx = getLightningHourlyPinContext(host);
+  lightningPlayback.layoutPinned = shouldUseHourlyLightningHeatmap();
+  lightningPlayback.pinnedWidth = ctx.width;
+  lightningPlayback.pinnedHeight = ctx.height;
+  lightningPlayback.pinnedMaximized = ctx.maximized;
+
+  // In hourly mode, hand strike cells to a transparent overlay built from the sealed
+  // base geometry. Scrubbing then restyles only the overlay, so the sealed base
+  // (colorbar, scaleanchor, basemap) never re-solves and cannot jitter.
+  if (shouldUseHourlyLightningHeatmap()) {
+    const hour = els.lhHourScroller?.value ?? "12";
+    const entered = await enterGafLightningScrubOverlay(host, hour, { generation: gen });
+    if (gen !== lightningPlayback.layoutGeneration) {
+      return false;
+    }
+    if (!entered) {
+      return false;
+    }
+  } else {
+    await ensureLightningRingTracesOnHost(host);
+  }
+  return true;
+}
+
+async function rebuildAndSealGafLightningHost(host, section = state.displayedSection) {
+  const gen = bumpLightningLayoutGeneration();
+  teardownLightningOverlay();
+  if (!host) {
+    return false;
+  }
+
+  applyMaximizedChartState();
+  applyChartShellHeights(section);
+  await awaitLayoutSettle();
+  if (gen !== lightningPlayback.layoutGeneration) {
+    return false;
+  }
+
+  const icao = els.icao?.value || "";
+  const season = els.season?.value || "all";
+  const lightningIndex = state.latestFigures.findIndex((item) => item.id === "lightning_heatmap");
+
+  await ensureLightningGafAreasLoaded();
+  await ensureLightningGafSeasonLoaded(season, { includeHours: state.lhMode === "hourly" });
+  if (gen !== lightningPlayback.layoutGeneration) {
+    return false;
+  }
+
+  const hour = state.lhMode === "hourly" ? Number(els.lhHourScroller?.value ?? 12) : null;
+  const figure = buildGafLightningFigure({ icao, season, hour });
+  if (!figure) {
+    return false;
+  }
+  if (state.lhMode === "hourly") {
+    ensureLightningHourlyTwoTraceFigure(figure);
+  }
+
+  const width = Math.round(host.offsetWidth || host.clientWidth || 0);
+  const height = Math.round(host.offsetHeight || host.clientHeight || 0);
+  figure.layout = figure.layout || {};
+  if (width > 0) {
+    figure.layout.width = width;
+  }
+  if (height > 0) {
+    figure.layout.height = height;
+  }
+  figure.layout.autosize = false;
+  applyTopoMapPanelLayout(figure, "lightning_heatmap", { chartHeight: height || undefined });
+
+  state.lightningHeatmapScaleRef = {
+    zmin: Number(figure.layout.meta.lightningZmin) || 0,
+    zmax: Number(figure.layout.meta.lightningZmax) || 1,
+  };
+  if (lightningIndex >= 0) {
+    state.latestFigures[lightningIndex] = {
+      id: "lightning_heatmap",
+      figure: JSON.parse(JSON.stringify(figure)),
+    };
+  }
+  host.dataset.figureId = "lightning_heatmap";
+
+  await Plotly.react(host, figure.data || [], figure.layout || {}, {
+    displayModeBar: false,
+    responsive: false,
+  });
+  if (gen !== lightningPlayback.layoutGeneration) {
+    return false;
+  }
+  return sealGafLightningHost(host, { generation: gen });
+}
+
+function scheduleGafLightningSeal(host) {
+  if (!host) {
+    return;
+  }
+  if (lightningPlayback.gafSealRaf != null) {
+    cancelAnimationFrame(lightningPlayback.gafSealRaf);
+  }
+  lightningPlayback.gafSealRaf = requestAnimationFrame(() => {
+    lightningPlayback.gafSealRaf = null;
+    rebuildAndSealGafLightningHost(host);
+  });
+}
+
+// GAF hourly scrub runs entirely on a transparent overlay that sits on top of the
+// sealed base host. The base (basemap image, boundaries, airports, chrome colorbar,
+// scaleanchor letterboxing) is rendered once and never restyled while scrubbing, so
+// a z-only restyle on the overlay cannot re-solve layout or nudge the map/legend.
+// The overlay's geometry is copied from the base's resolved `_fullLayout` *after*
+// seal, so the two planes align pixel-for-pixel.
+function buildGafLightningOverlayLayout(baseHost) {
+  const full = baseHost?._fullLayout || {};
+  const size = full._size || {};
+  const layoutMargin = baseHost?.layout?.margin || {};
+  const width = Math.round(baseHost.offsetWidth || baseHost.clientWidth || 0);
+  const height = Math.round(baseHost.offsetHeight || baseHost.clientHeight || 0);
+  const xFull = full.xaxis || {};
+  const yFull = full.yaxis || {};
+  const margin = {
+    l: Math.round(Number.isFinite(size.l) ? size.l : (layoutMargin.l || 0)),
+    r: Math.round(Number.isFinite(size.r) ? size.r : (layoutMargin.r || 0)),
+    t: Math.round(Number.isFinite(size.t) ? size.t : (layoutMargin.t || 0)),
+    b: Math.round(Number.isFinite(size.b) ? size.b : (layoutMargin.b || 0)),
+  };
+  const axisCommon = {
+    autorange: false,
+    fixedrange: true,
+    visible: false,
+    showgrid: false,
+    zeroline: false,
+    showticklabels: false,
+    ticks: "",
+    automargin: false,
+  };
+  // Copy the *resolved* domain and range from the sealed base. The base uses
+  // scaleanchor + constrain:"domain" (letterboxing) which shrinks the resolved
+  // domain; copying that domain/range without scaleanchor reproduces the identical
+  // plotting rectangle while avoiding any scale re-solve on the overlay.
+  const xaxis = { ...axisCommon };
+  if (Array.isArray(xFull.range)) xaxis.range = xFull.range.slice();
+  if (Array.isArray(xFull.domain)) xaxis.domain = xFull.domain.slice();
+  const yaxis = { ...axisCommon };
+  if (Array.isArray(yFull.range)) yaxis.range = yFull.range.slice();
+  if (Array.isArray(yFull.domain)) yaxis.domain = yFull.domain.slice();
+  return {
+    width,
+    height,
+    autosize: false,
+    margin,
+    paper_bgcolor: "rgba(0,0,0,0)",
+    plot_bgcolor: "rgba(0,0,0,0)",
+    showlegend: false,
+    hovermode: "closest",
+    uirevision: "gaf-lightning-overlay",
+    xaxis,
+    yaxis,
+  };
+}
+
+function buildGafLightningOverlayDataTrace(baseHost, cropped) {
+  const dataIndex = lightningHeatmapTraceIndex(baseHost);
+  const base = (dataIndex >= 0 && baseHost.data?.[dataIndex]) ? baseHost.data[dataIndex] : {};
+  const meta = baseHost?.layout?.meta || {};
+  const zmin = Number.isFinite(Number(base.zmin)) ? Number(base.zmin) : (Number(meta.lightningZmin) || 0);
+  const zmax = Number.isFinite(Number(base.zmax)) ? Number(base.zmax) : (Number(meta.lightningZmax) || 1);
+  return {
+    type: "heatmap",
+    x: cropped.lons,
+    y: cropped.lats,
+    z: cropped.z,
+    zmin,
+    zmax,
+    zauto: false,
+    colorscale: base.colorscale || LIGHTNING_HEATMAP_COLORSCALE,
+    opacity: Number.isFinite(Number(base.opacity)) ? Number(base.opacity) : LIGHTNING_HEATMAP_OPACITY,
+    showscale: false,
+    hoverongaps: false,
+    hovertemplate: "Lon: %{x:.2f}°<br>Lat: %{y:.2f}°<br>Count: %{z}<extra></extra>",
+    name: "__gaf_lightning_overlay",
+  };
+}
+
+// Blank the base data-heatmap cells so strikes live only in the overlay. Done once
+// at seal time (never during scrub); with the base fully pinned this restyle cannot
+// move the plot area or colorbar.
+async function blankGafLightningBaseCells(baseHost) {
+  const heatIdx = lightningHeatmapTraceIndex(baseHost);
+  if (heatIdx < 0) {
+    return;
+  }
+  const z = baseHost.data?.[heatIdx]?.z;
+  if (!Array.isArray(z)) {
+    return;
+  }
+  const nullZ = z.map((row) => (Array.isArray(row) ? row.map(() => null) : null));
+  await Plotly.restyle(baseHost, { z: [nullZ] }, [heatIdx]);
+}
+
+async function enterGafLightningScrubOverlay(baseHost, hour, { generation = null } = {}) {
+  const gen = generation == null ? lightningPlayback.layoutGeneration : generation;
+  if (!baseHost || !shouldUseHourlyLightningHeatmap()) {
+    return false;
+  }
+  const icao = els.icao?.value || "";
+  const season = els.season?.value || "all";
+  const cropped = lookupGafLightningHourlyCrop(hour, icao, season);
+  if (!cropped) {
+    return false;
+  }
+
+  await blankGafLightningBaseCells(baseHost);
+  await awaitLayoutSettle();
+  if (gen !== lightningPlayback.layoutGeneration) {
+    return false;
+  }
+
+  const overlay = ensureLightningOverlayHost(baseHost);
+  if (!overlay) {
+    return false;
+  }
+  const layout = buildGafLightningOverlayLayout(baseHost);
+  const trace = buildGafLightningOverlayDataTrace(baseHost, cropped);
+  // Rings + airport labels live on the overlay (it paints above the sealed base).
+  // Copy airports before hiding the base copies, otherwise the overlay inherits
+  // visible:false and labels disappear.
+  await deleteLightningRingTracesOnHost(baseHost);
+  const rings = lightningRingTracesForCurrentView(baseHost);
+  const airports = copyGafAirportTracesFromHost(baseHost).map((trace) => ({
+    ...trace,
+    visible: true,
+  }));
+  await hideGafAirportTracesOnHost(baseHost);
+  overlay.classList.add("is-visible");
+  await Plotly.react(overlay, [trace, ...rings, ...airports], layout, {
+    displayModeBar: false,
+    responsive: false,
+  });
+  if (gen !== lightningPlayback.layoutGeneration) {
+    return false;
+  }
+  const ctx = getLightningHourlyPinContext(baseHost);
+  lightningPlayback.overlayActive = true;
+  lightningPlayback.pinnedWidth = ctx.width;
+  lightningPlayback.pinnedHeight = ctx.height;
+  lightningPlayback.pinnedMaximized = ctx.maximized;
+  return true;
+}
+
+async function restyleGafLightningHour(host, hour) {
+  const overlay = getLightningOverlayHost();
+  if (!overlay || !overlay.data?.length) {
+    return;
+  }
+  const icao = els.icao?.value || "";
+  const season = els.season?.value || "all";
+  const cropped = lookupGafLightningHourlyCrop(hour, icao, season);
+  if (!cropped) {
+    return;
+  }
+  lightningPlayback.frameUpdating = true;
+  try {
+    await Plotly.restyle(overlay, { z: [cropped.z] }, [0]);
+  } finally {
+    lightningPlayback.frameUpdating = false;
+  }
+}
+
 const LIGHTNING_OVERLAY_HOVERTEMPLATE = "E: %{x:.1f} km<br>N: %{y:.1f} km<br>Count: %{z}<extra></extra>";
 
 function buildLightningOverlayDataTrace(baseHost, z) {
@@ -2553,8 +2942,12 @@ async function enterLightningHourlyOverlay(baseHost, zGrid) {
   const z = lightningOverlayZFromGrid(baseHost, zGrid);
   const layout = buildLightningOverlayLayout(baseHost);
   const trace = buildLightningOverlayDataTrace(baseHost, z);
+  // Rings must live on the overlay (above the sealed base). Drop base rings so
+  // the transparent overlay does not show a second pair underneath.
+  await deleteLightningRingTracesOnHost(baseHost);
+  const rings = buildAerodromeLightningRingTraces();
   overlay.classList.add("is-visible");
-  await Plotly.react(overlay, [trace], layout, { displayModeBar: false, responsive: false });
+  await Plotly.react(overlay, [trace, ...rings], layout, { displayModeBar: false, responsive: false });
   const ctx = getLightningHourlyPinContext(baseHost);
   lightningPlayback.overlayActive = true;
   lightningPlayback.pinnedWidth = ctx.width;
@@ -2600,7 +2993,10 @@ function renderLightningOverlayFrame(zGrid) {
   }
   const baseHost = getLightningHeatmapChartHost();
   const z = lightningOverlayZFromGrid(baseHost, zGrid);
-  return Plotly.restyle(overlay, { z: [z] }, [0]);
+  lightningPlayback.frameUpdating = true;
+  return Plotly.restyle(overlay, { z: [z] }, [0]).finally(() => {
+    lightningPlayback.frameUpdating = false;
+  });
 }
 
 function teardownLightningOverlay() {
@@ -2684,6 +3080,8 @@ async function finalizeLightningHourlyLayoutPin(host) {
 
 function resetLightningHourlyLayoutState() {
   teardownLightningOverlay();
+  bumpLightningLayoutGeneration();
+  lightningPlayback.gafHourlyCropCache = null;
   lightningPlayback.layoutPinned = false;
   lightningPlayback.pinnedWidth = null;
   lightningPlayback.pinnedHeight = null;
@@ -2705,14 +3103,872 @@ const lightningPlayback = {
   renderInFlight: false,
   liteHourlyMap: null,
   liteHourlyIcao: null,
+  gafAreas: null,
+  gafSeasonMap: null,
+  gafSeasonKey: null,
+  gafHoursLoaded: false,
+  gafHourlyCropCache: null,
+  gafIdlePrefetchHandle: null,
   layoutPinned: false,
+  layoutGeneration: 0,
   frameUpdating: false,
   pendingHour: null,
   pinnedWidth: null,
   pinnedHeight: null,
   pinnedMaximized: null,
   overlayActive: false,
+  gafSealRaf: null,
 };
+
+function bumpLightningLayoutGeneration() {
+  lightningPlayback.layoutGeneration += 1;
+  return lightningPlayback.layoutGeneration;
+}
+
+function isLightningGafZoom() {
+  return state.lhZoom === "gaf" || state.lhZoom === "region";
+}
+
+const LIGHTNING_ZOOM_OPTIONS = [
+  { key: "local", label: "Local", title: "Local 30 km lightning near the aerodrome" },
+  { key: "gaf", label: "Regional", title: "Regional GAF-area (or offshore pair) lightning" },
+  { key: "region", label: "National", title: "National Australia lightning domain" },
+];
+
+function isGafLightningFigure(figure) {
+  return String(figure?.layout?.meta?.lightningView || "") === "gaf";
+}
+
+function liteLightningGafAreasUrl() {
+  return "data-lite/lightning_gaf/areas.json";
+}
+
+function lightningGafPackId(view = lightningGafViewSpec()) {
+  if (!view || view.kind === "region") {
+    return null;
+  }
+  return view.pair || view.gaf || null;
+}
+
+function lightningGafPackKey(season, view = lightningGafViewSpec()) {
+  const seasonKey = liteSectionKey(season);
+  const packId = lightningGafPackId(view);
+  if (!packId) {
+    return `${seasonKey}::region`;
+  }
+  return `${seasonKey}::${view.kind}::${packId}`;
+}
+
+function liteLightningGafSummaryUrl(season, view = lightningGafViewSpec()) {
+  const seasonKey = liteSectionKey(season);
+  const packId = lightningGafPackId(view);
+  if (!packId) {
+    return `data-lite/lightning_gaf/${seasonKey}.summary.json.gz`;
+  }
+  return `data-lite/lightning_gaf/${seasonKey}/${packId}.summary.json.gz`;
+}
+
+function liteLightningGafHoursUrl(season, view = lightningGafViewSpec()) {
+  const seasonKey = liteSectionKey(season);
+  const packId = lightningGafPackId(view);
+  if (!packId) {
+    return `data-lite/lightning_gaf/${seasonKey}.hours.json.gz`;
+  }
+  return `data-lite/lightning_gaf/${seasonKey}/${packId}.hours.json.gz`;
+}
+
+function liteLightningGafImageUrl(imageName) {
+  return withLiteDataVersion(`data-lite/lightning_gaf/${imageName}`);
+}
+
+async function ensureLightningGafAreasLoaded() {
+  if (lightningPlayback.gafAreas) {
+    return lightningPlayback.gafAreas;
+  }
+  // Plain JSON only — skip the .gz probe to avoid a guaranteed 404.
+  lightningPlayback.gafAreas = await fetchJsonCached(liteLightningGafAreasUrl(), { preferGzip: false });
+  return lightningPlayback.gafAreas;
+}
+
+function cancelGafHourlyIdlePrefetch() {
+  const handle = lightningPlayback.gafIdlePrefetchHandle;
+  if (handle == null) {
+    return;
+  }
+  if (typeof cancelIdleCallback === "function") {
+    cancelIdleCallback(handle);
+  } else {
+    clearTimeout(handle);
+  }
+  lightningPlayback.gafIdlePrefetchHandle = null;
+}
+
+function scheduleGafHourlyIdlePrefetch(season = els.season?.value || "all") {
+  if (!isLightningGafZoom() || state.lhMode === "hourly") {
+    return;
+  }
+  cancelGafHourlyIdlePrefetch();
+  const run = () => {
+    lightningPlayback.gafIdlePrefetchHandle = null;
+    if (!isLightningGafZoom() || state.lhMode === "hourly") {
+      return;
+    }
+    ensureLightningGafSeasonLoaded(season, { includeHours: true })
+      .then(() => {
+        ensureGafLightningHourlyCropCache(els.icao?.value, season);
+        ensureLightningGafHourlyScale(els.icao?.value, season);
+      })
+      .catch(() => {});
+  };
+  if (typeof requestIdleCallback === "function") {
+    lightningPlayback.gafIdlePrefetchHandle = requestIdleCallback(run, { timeout: 2500 });
+  } else {
+    lightningPlayback.gafIdlePrefetchHandle = setTimeout(run, 400);
+  }
+}
+
+async function ensureLightningGafSeasonLoaded(
+  season = els.season?.value || "all",
+  { includeHours = false } = {},
+) {
+  await ensureLightningGafAreasLoaded();
+  const view = lightningGafViewSpec();
+  if (!view) {
+    return null;
+  }
+  const packKey = lightningGafPackKey(season, view);
+  const needHours = includeHours || state.lhMode === "hourly";
+  const havePack = lightningPlayback.gafSeasonMap && lightningPlayback.gafSeasonKey === packKey;
+  if (havePack && (!needHours || lightningPlayback.gafHoursLoaded)) {
+    return lightningPlayback.gafSeasonMap;
+  }
+
+  if (havePack && needHours && !lightningPlayback.gafHoursLoaded) {
+    const hoursUrl = liteLightningGafHoursUrl(season, view);
+    const needsFetch = !liteCache.has(hoursUrl);
+    if (needsFetch) {
+      showLoading("Loading hourly lightning...");
+    }
+    try {
+      const hoursPayload = await fetchJsonCached(hoursUrl);
+      lightningPlayback.gafSeasonMap.hours = hoursPayload.hours;
+      lightningPlayback.gafHoursLoaded = true;
+    } finally {
+      if (needsFetch) {
+        hideLoading();
+      }
+    }
+    return lightningPlayback.gafSeasonMap;
+  }
+
+  const summaryUrl = liteLightningGafSummaryUrl(season, view);
+  const needsSummaryFetch = !liteCache.has(summaryUrl);
+  if (needsSummaryFetch) {
+    showLoading("Preparing regional lightning...");
+  }
+  try {
+    const summaryPayload = await fetchJsonCached(summaryUrl);
+    lightningPlayback.gafSeasonMap = summaryPayload;
+    lightningPlayback.gafSeasonKey = packKey;
+    lightningPlayback.gafHoursLoaded = Array.isArray(summaryPayload.hours)
+      && summaryPayload.hours.length >= 24;
+    lightningPlayback.gafHourlyCropCache = null;
+  } finally {
+    if (needsSummaryFetch) {
+      hideLoading();
+    }
+  }
+
+  if (needHours && !lightningPlayback.gafHoursLoaded) {
+    const hoursUrl = liteLightningGafHoursUrl(season, view);
+    const needsHoursFetch = !liteCache.has(hoursUrl);
+    if (needsHoursFetch) {
+      showLoading("Loading hourly lightning...");
+    }
+    try {
+      const hoursPayload = await fetchJsonCached(hoursUrl);
+      lightningPlayback.gafSeasonMap.hours = hoursPayload.hours;
+      lightningPlayback.gafHoursLoaded = true;
+    } finally {
+      if (needsHoursFetch) {
+        hideLoading();
+      }
+    }
+  }
+  return lightningPlayback.gafSeasonMap;
+}
+
+function lightningGafAirportInfo(icao = els.icao?.value) {
+  const code = String(icao || "").trim().toUpperCase();
+  const areas = lightningPlayback.gafAreas;
+  return areas?.airports?.[code] || null;
+}
+
+function lightningGafViewSpec(icao = els.icao?.value) {
+  const areas = lightningPlayback.gafAreas;
+  if (!areas) {
+    return null;
+  }
+  const airport = lightningGafAirportInfo(icao);
+  if (state.lhZoom === "region") {
+    return {
+      kind: "region",
+      title: "Lightning Strike Frequency",
+      bbox: areas.region.bbox,
+      image: areas.region.image,
+      rings: null,
+      airport,
+    };
+  }
+
+  const pairId = airport?.pair;
+  const pair = pairId ? areas.pairs?.[pairId] : null;
+  if (pair) {
+    return {
+      kind: "pair",
+      title: "Lightning Strike Frequency",
+      bbox: pair.bbox,
+      image: pair.image,
+      rings: null,
+      airport,
+      pair: pairId,
+    };
+  }
+
+  const gafCode = airport?.gaf;
+  const area = gafCode ? areas.areas?.[gafCode] : null;
+  if (!area) {
+    return null;
+  }
+  return {
+    kind: "gaf",
+    title: "Lightning Strike Frequency",
+    bbox: area.bbox,
+    image: area.image,
+    rings: area.rings || null,
+    airport,
+    gaf: gafCode,
+  };
+}
+
+function pointInLonLatRing(lon, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    const intersects = ((yi > lat) !== (yj > lat))
+      && (lon < (((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12)) + xi);
+    if (intersects) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function pointInLonLatRings(lon, lat, rings) {
+  if (!Array.isArray(rings) || !rings.length) {
+    return true;
+  }
+  return rings.some((ring) => pointInLonLatRing(lon, lat, ring));
+}
+
+function cropLightningGafGrid(fullGrid, seasonMeta, bbox, rings = null) {
+  const cell = Number(seasonMeta.cell) || 0.1;
+  const latMin = Number(seasonMeta.latMin);
+  const lonMin = Number(seasonMeta.lonMin);
+  const nlat = Number(seasonMeta.nlat) || fullGrid.length;
+  const nlon = Number(seasonMeta.nlon) || (fullGrid[0]?.length || 0);
+  const [bLatMin, bLatMax, bLonMin, bLonMax] = bbox;
+
+  const i0 = Math.max(0, Math.floor((bLatMin - latMin) / cell));
+  const i1 = Math.min(nlat - 1, Math.ceil((bLatMax - latMin) / cell));
+  const j0 = Math.max(0, Math.floor((bLonMin - lonMin) / cell));
+  const j1 = Math.min(nlon - 1, Math.ceil((bLonMax - lonMin) / cell));
+
+  const lats = [];
+  const lons = [];
+  for (let i = i0; i <= i1; i += 1) {
+    lats.push(latMin + i * cell);
+  }
+  for (let j = j0; j <= j1; j += 1) {
+    lons.push(lonMin + j * cell);
+  }
+
+  const z = [];
+  for (let ii = 0; ii < lats.length; ii += 1) {
+    const i = i0 + ii;
+    const row = [];
+    const srcRow = fullGrid[i] || [];
+    for (let jj = 0; jj < lons.length; jj += 1) {
+      const j = j0 + jj;
+      const value = Number(srcRow[j]);
+      if (!Number.isFinite(value) || value <= 0 || !pointInLonLatRings(lons[jj], lats[ii], rings)) {
+        row.push(null);
+      } else {
+        row.push(value);
+      }
+    }
+    z.push(row);
+  }
+  return { lats, lons, z };
+}
+
+function gafLightningHourlyCropCacheKey(icao, season) {
+  const view = lightningGafViewSpec(icao);
+  if (!view) {
+    return null;
+  }
+  return lightningGafPackKey(season, view);
+}
+
+function ensureGafLightningHourlyCropCache(icao, season) {
+  const key = gafLightningHourlyCropCacheKey(icao, season);
+  if (!key) {
+    return null;
+  }
+  if (lightningPlayback.gafHourlyCropCache?.key === key) {
+    return lightningPlayback.gafHourlyCropCache;
+  }
+  const seasonMeta = lightningPlayback.gafSeasonMap;
+  const view = lightningGafViewSpec(icao);
+  if (!seasonMeta || !view || !Array.isArray(seasonMeta.hours) || seasonMeta.hours.length < 24) {
+    return null;
+  }
+  const grids = [];
+  for (let hour = 0; hour < 24; hour += 1) {
+    grids.push(cropLightningGafGrid(seasonMeta.hours[hour] || [], seasonMeta, view.bbox, null));
+  }
+  lightningPlayback.gafHourlyCropCache = { key, grids };
+  return lightningPlayback.gafHourlyCropCache;
+}
+
+function lookupGafLightningHourlyCrop(hour, icao, season) {
+  const cache = ensureGafLightningHourlyCropCache(icao, season);
+  if (!cache?.grids?.length) {
+    return null;
+  }
+  const idx = Number(hour);
+  if (Number.isInteger(idx) && idx >= 0 && idx < cache.grids.length) {
+    return cache.grids[idx];
+  }
+  return cache.grids[0];
+}
+
+function lightningGafColorRange(z) {
+  const positives = [];
+  (z || []).forEach((row) => {
+    (Array.isArray(row) ? row : [row]).forEach((value) => {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0) {
+        positives.push(numeric);
+      }
+    });
+  });
+  if (!positives.length) {
+    return { zmin: 0, zmax: 1 };
+  }
+  positives.sort((a, b) => a - b);
+  const zmin = positives[0];
+  const idx = Math.min(positives.length - 1, Math.floor((positives.length - 1) * (LIGHTNING_HEATMAP_COLOR_PERCENTILE / 100)));
+  let zmax = positives[idx];
+  const peak = positives[positives.length - 1];
+  if (zmax >= peak * 0.98) {
+    zmax = peak;
+  }
+  return { zmin, zmax: Math.max(zmax, zmin + 1) };
+}
+
+function computeLightningGafHourlyScaleFromGrids(grids) {
+  if (!Array.isArray(grids) || !grids.length) {
+    return null;
+  }
+  const positives = [];
+  grids.forEach((grid) => {
+    (grid?.z || []).forEach((row) => {
+      (Array.isArray(row) ? row : []).forEach((value) => {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric) && numeric > 0) {
+          positives.push(numeric);
+        }
+      });
+    });
+  });
+  if (!positives.length) {
+    return { zmin: 0, zmax: 1 };
+  }
+  positives.sort((a, b) => a - b);
+  const zmin = positives[0];
+  const idx = Math.min(positives.length - 1, Math.floor((positives.length - 1) * (LIGHTNING_HEATMAP_COLOR_PERCENTILE / 100)));
+  let zmax = positives[idx] * LIGHTNING_HOURLY_SCALE_HEADROOM;
+  const peak = positives[positives.length - 1];
+  zmax = Math.min(Math.max(zmax, zmin + 1), peak);
+  return { zmin, zmax };
+}
+
+function ensureLightningGafHourlyScale(icao, season) {
+  const key = gafLightningHourlyCropCacheKey(icao, season);
+  if (!key) {
+    return null;
+  }
+  if (state.lightningHeatmapHourlyScaleKey === key && state.lightningHeatmapHourlyScaleRef) {
+    return state.lightningHeatmapHourlyScaleRef;
+  }
+  const cache = ensureGafLightningHourlyCropCache(icao, season);
+  const scale = computeLightningGafHourlyScaleFromGrids(cache?.grids);
+  if (scale) {
+    state.lightningHeatmapHourlyScaleRef = { ...scale };
+    state.lightningHeatmapHourlyScaleKey = key;
+  }
+  return state.lightningHeatmapHourlyScaleRef;
+}
+
+function lightningGafBoundaryTraces(areasPayload = lightningPlayback.gafAreas) {
+  const areas = areasPayload?.areas;
+  if (!areas || typeof areas !== "object") {
+    return [];
+  }
+  const xs = [];
+  const ys = [];
+  Object.values(areas).forEach((area) => {
+    (area?.rings || []).forEach((ring) => {
+      if (!Array.isArray(ring) || ring.length < 3) {
+        return;
+      }
+      ring.forEach((pt) => {
+        xs.push(Number(pt[0]));
+        ys.push(Number(pt[1]));
+      });
+      // Close the ring, then break before the next polygon.
+      xs.push(Number(ring[0][0]), null);
+      ys.push(Number(ring[0][1]), null);
+    });
+  });
+  if (!xs.length) {
+    return [];
+  }
+  return [{
+    type: "scatter",
+    mode: "lines",
+    x: xs,
+    y: ys,
+    line: { color: "rgba(20, 20, 20, 0.85)", width: 1.25 },
+    hoverinfo: "skip",
+    cliponaxis: true,
+    showlegend: false,
+    name: "__gaf_boundaries",
+  }];
+}
+
+function buildGafAirportScatterTrace({ lons, lats, texts, sizes, color, name }) {
+  return {
+    type: "scatter",
+    mode: "markers+text",
+    x: lons,
+    y: lats,
+    text: texts,
+    textposition: "top left",
+    textfont: {
+      size: 8,
+      color,
+      family: "Source Sans 3, Open Sans, Arial, sans-serif",
+    },
+    marker: {
+      size: sizes,
+      color,
+      symbol: "circle",
+      line: { width: 0 },
+    },
+    hovertemplate: "%{text}<br>Lon: %{x:.3f}°<br>Lat: %{y:.3f}°<extra></extra>",
+    cliponaxis: true,
+    showlegend: false,
+    name,
+  };
+}
+
+const LIGHTNING_RING_TRACE_NAME = "__lightning_ring";
+
+function buildLightningRingCircle(cx, cy, rx, ry, segments = 96) {
+  const xs = [];
+  const ys = [];
+  for (let i = 0; i <= segments; i += 1) {
+    const angle = (i / segments) * Math.PI * 2;
+    xs.push(cx + rx * Math.cos(angle));
+    ys.push(cy + ry * Math.sin(angle));
+  }
+  return { xs, ys };
+}
+
+function lightningRingTrace(xs, ys) {
+  return {
+    type: "scatter",
+    mode: "lines",
+    x: xs,
+    y: ys,
+    line: { color: "rgba(255,255,255,0.95)", width: 1.5 },
+    hoverinfo: "skip",
+    showlegend: false,
+    cliponaxis: true,
+    name: LIGHTNING_RING_TRACE_NAME,
+  };
+}
+
+function buildAerodromeLightningRingTraces(radii = LIGHTNING_HEATMAP_RING_RADII_KM) {
+  return radii.map((radius) => {
+    const { xs, ys } = buildLightningRingCircle(0, 0, radius, radius);
+    return lightningRingTrace(xs, ys);
+  });
+}
+
+// Range rings on the GAF view are drawn in lon/lat, so a constant ground radius
+// becomes an ellipse: longitude degrees shrink with the cosine of the latitude.
+function buildGafLightningRingTraces(view) {
+  if (!view || view.kind === "region") {
+    return [];
+  }
+  const lat = Number(view.airport?.lat);
+  const lon = Number(view.airport?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return [];
+  }
+  const kmPerLat = 111.32;
+  const kmPerLon = Math.max(kmPerLat * Math.cos((lat * Math.PI) / 180), 1e-6);
+  return LIGHTNING_HEATMAP_RING_RADII_KM.map((radiusKm) => {
+    const { xs, ys } = buildLightningRingCircle(
+      lon,
+      lat,
+      radiusKm / kmPerLon,
+      radiusKm / kmPerLat,
+    );
+    return lightningRingTrace(xs, ys);
+  });
+}
+
+function stripLightningRingArtifacts(figure) {
+  if (!figure) {
+    return;
+  }
+  figure.data = (figure.data || []).filter((trace) => trace?.name !== LIGHTNING_RING_TRACE_NAME);
+  figure.layout = figure.layout || {};
+  figure.layout.shapes = (figure.layout.shapes || []).filter(
+    (shape) => !(shape?.type === "circle" && shape?.xref === "x" && shape?.yref === "y"),
+  );
+}
+
+function lightningRingTraceIndices(hostOrFigure) {
+  const data = hostOrFigure?.data || hostOrFigure?.figure?.data || [];
+  const indices = [];
+  data.forEach((entry, index) => {
+    if (entry?.name === LIGHTNING_RING_TRACE_NAME) {
+      indices.push(index);
+    }
+  });
+  return indices;
+}
+
+async function deleteLightningRingTracesOnHost(host) {
+  const indices = lightningRingTraceIndices(host);
+  if (!indices.length) {
+    return;
+  }
+  await Plotly.deleteTraces(host, indices);
+}
+
+function copyGafAirportTracesFromHost(baseHost) {
+  return (baseHost?.data || [])
+    .filter((trace) => String(trace?.name || "").startsWith("__gaf_airports"))
+    .map((trace) => JSON.parse(JSON.stringify(trace)));
+}
+
+async function hideGafAirportTracesOnHost(host) {
+  const indices = [];
+  (host?.data || []).forEach((trace, index) => {
+    if (String(trace?.name || "").startsWith("__gaf_airports")) {
+      indices.push(index);
+    }
+  });
+  if (!indices.length) {
+    return;
+  }
+  await Plotly.restyle(host, { visible: false }, indices);
+}
+
+function applyLightningHeatmapRingOverlays(figure) {
+  stripLightningRingArtifacts(figure);
+  figure.data = figure.data || [];
+  figure.data.push(...buildAerodromeLightningRingTraces());
+  figure.layout = figure.layout || {};
+  figure.layout.annotations = (figure.layout.annotations || []).filter(
+    (entry) => !(entry?.xref === "x" && entry?.yref === "y"
+      && LIGHTNING_HEATMAP_RING_RADII_KM.includes(Number(entry?.y))),
+  );
+}
+
+function lightningRingTracesForCurrentView(baseHost = null) {
+  if (isLightningGafZoom() || isGafLightningFigure({ layout: baseHost?.layout })) {
+    const view = lightningGafViewSpec(els.icao?.value);
+    return buildGafLightningRingTraces(view);
+  }
+  return buildAerodromeLightningRingTraces();
+}
+
+// Two traces so both markers and labels get reliable colors (Plotly does not
+// reliably support per-point textfont.color on a single scatter). Selected is
+// drawn last so it sits on top if labels overlap.
+function lightningGafAirportOverlay(bbox, selectedIcao = "") {
+  const airports = lightningPlayback.gafAreas?.airports;
+  if (!airports || typeof airports !== "object" || !Array.isArray(bbox) || bbox.length !== 4) {
+    return [];
+  }
+  const [latMin, latMax, lonMin, lonMax] = bbox;
+  const selected = String(selectedIcao || "").trim().toUpperCase();
+  const others = { lons: [], lats: [], texts: [], sizes: [] };
+  const selectedPts = { lons: [], lats: [], texts: [], sizes: [] };
+  Object.entries(airports).forEach(([icao, info]) => {
+    const lat = Number(info?.lat);
+    const lon = Number(info?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return;
+    }
+    if (lat < latMin || lat > latMax || lon < lonMin || lon > lonMax) {
+      return;
+    }
+    const code = String(icao || "").trim().toUpperCase();
+    const bucket = code === selected ? selectedPts : others;
+    bucket.lons.push(lon);
+    bucket.lats.push(lat);
+    bucket.texts.push(code);
+    bucket.sizes.push(code === selected ? 5.5 : 4);
+  });
+  const traces = [];
+  if (others.lons.length) {
+    traces.push(buildGafAirportScatterTrace({
+      ...others,
+      color: "#888888",
+      name: "__gaf_airports_others",
+    }));
+  }
+  if (selectedPts.lons.length) {
+    traces.push(buildGafAirportScatterTrace({
+      ...selectedPts,
+      color: "#111111",
+      name: "__gaf_airports_selected",
+    }));
+  }
+  return traces;
+}
+
+function buildGafLightningFigure({ icao, season, hour = null } = {}) {
+  const seasonMeta = lightningPlayback.gafSeasonMap;
+  const view = lightningGafViewSpec(icao);
+  if (!seasonMeta || !view) {
+    return null;
+  }
+
+  const hourly = hour != null && Array.isArray(seasonMeta.hours);
+  const cropped = hourly
+    ? (lookupGafLightningHourlyCrop(hour, icao, season)
+      || cropLightningGafGrid(seasonMeta.hours[Number(hour)] || seasonMeta.hours[0] || [], seasonMeta, view.bbox, null))
+    : cropLightningGafGrid(seasonMeta.summary, seasonMeta, view.bbox, null);
+  const scale = hourly
+    ? (ensureLightningGafHourlyScale(icao, season) || lightningGafColorRange(cropped.z))
+    : lightningGafColorRange(cropped.z);
+  const [latMin, latMax, lonMin, lonMax] = view.bbox;
+  const midLon = (lonMin + lonMax) / 2;
+  const midLat = (latMin + latMax) / 2;
+
+  const data = [{
+    type: "heatmap",
+    x: cropped.lons,
+    y: cropped.lats,
+    z: cropped.z,
+    zmin: scale.zmin,
+    zmax: scale.zmax,
+    zauto: false,
+    hoverongaps: false,
+    colorscale: LIGHTNING_HEATMAP_COLORSCALE,
+    opacity: LIGHTNING_HEATMAP_OPACITY,
+    colorbar: lightningHeatmapColorbar(),
+    hovertemplate: "Lon: %{x:.2f}°<br>Lat: %{y:.2f}°<br>Count: %{z}<extra></extra>",
+  }];
+
+  data.push(...lightningGafBoundaryTraces());
+  data.push(...buildGafLightningRingTraces(view));
+  data.push(...lightningGafAirportOverlay(view.bbox, icao));
+
+  return {
+    data,
+    layout: {
+      title: {
+        text: view.title,
+        font: { size: 14 },
+        x: 0.01,
+        xanchor: "left",
+        y: 0.98,
+        yanchor: "top",
+      },
+      font: { color: "#333333", family: "Source Sans 3, Open Sans, Arial, sans-serif" },
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      margin: { ...TOPO_MAP_PANEL.margin, r: LIGHTNING_HEATMAP_MARGIN_R },
+      xaxis: {
+        title: { text: "" },
+        range: [lonMin, lonMax],
+        scaleanchor: "y",
+        scaleratio: 1,
+        constrain: "domain",
+        autorange: false,
+        showgrid: false,
+        zeroline: false,
+        showline: false,
+        mirror: false,
+        ticks: "",
+        tickmode: "array",
+        tickvals: [midLon],
+        ticktext: [""],
+      },
+      yaxis: {
+        title: { text: "" },
+        range: [latMin, latMax],
+        autorange: false,
+        showgrid: false,
+        zeroline: false,
+        showline: false,
+        mirror: false,
+        ticks: "",
+        tickmode: "array",
+        tickvals: [midLat],
+        ticktext: [""],
+      },
+      shapes: [],
+      images: [{
+        source: liteLightningGafImageUrl(view.image),
+        xref: "x",
+        yref: "y",
+        x: lonMin,
+        y: latMax,
+        sizex: lonMax - lonMin,
+        sizey: latMax - latMin,
+        sizing: "stretch",
+        layer: "below",
+        opacity: CARTESIAN_TOPO_OPACITY,
+      }],
+      meta: {
+        lightningView: "gaf",
+        lightningGafKind: view.kind,
+        lightningZmin: scale.zmin,
+        lightningZmax: scale.zmax,
+        gafBbox: view.bbox,
+        gaf: view.gaf || null,
+        pair: view.pair || null,
+      },
+      uirevision: [
+        "lightning-gaf",
+        view.kind,
+        view.pair || view.gaf || "region",
+        season,
+        hourly ? "hourly" : "summary",
+      ].join("::"),
+    },
+  };
+}
+
+async function applyGafLightningHeatmapOverride(data, icao, season) {
+  if (!data?.figures?.length) {
+    return data;
+  }
+  const index = data.figures.findIndex((item) => item.id === "lightning_heatmap");
+  if (index < 0) {
+    return data;
+  }
+
+  await ensureLightningGafAreasLoaded();
+  await ensureLightningGafSeasonLoaded(season, { includeHours: state.lhMode === "hourly" });
+  const hour = state.lhMode === "hourly" ? Number(els.lhHourScroller?.value ?? 12) : null;
+  const figure = buildGafLightningFigure({ icao, season, hour });
+  if (!figure) {
+    return data;
+  }
+  if (state.lhMode === "hourly") {
+    ensureLightningHourlyTwoTraceFigure(figure);
+  }
+  data.figures[index] = { id: "lightning_heatmap", figure };
+  state.lightningHeatmapScaleRef = {
+    zmin: Number(figure.layout.meta.lightningZmin) || 0,
+    zmax: Number(figure.layout.meta.lightningZmax) || 1,
+  };
+  if (state.lhMode === "summary") {
+    scheduleGafHourlyIdlePrefetch(season);
+  }
+  return data;
+}
+
+function updateLightningZoomToggle() {
+  const ui = getLightningHeatmapChartUi();
+  if (!ui?.card) {
+    return;
+  }
+  let toggle = ui.card.querySelector(".chart-zoom-toggle");
+  const show = state.displayedSection === "precipitation"
+    && state.latestFigures.some((item) => item.id === "lightning_heatmap");
+  if (!show) {
+    if (toggle) {
+      toggle.classList.add("hidden");
+    }
+    return;
+  }
+  if (!toggle) {
+    toggle = document.createElement("div");
+    toggle.className = "chart-zoom-toggle segmented-toggle";
+    toggle.setAttribute("role", "group");
+    toggle.setAttribute("aria-label", "Lightning map zoom");
+    LIGHTNING_ZOOM_OPTIONS.forEach((option) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "segmented-toggle-btn";
+      button.dataset.zoom = option.key;
+      button.textContent = option.label;
+      button.title = option.title;
+      button.addEventListener("click", () => {
+        setLightningZoom(option.key);
+      });
+      toggle.appendChild(button);
+    });
+    ui.card.appendChild(toggle);
+  }
+  toggle.classList.remove("hidden");
+  const activeZoom = LIGHTNING_ZOOM_OPTIONS.some((option) => option.key === state.lhZoom)
+    ? state.lhZoom
+    : "local";
+  toggle.querySelectorAll(".segmented-toggle-btn").forEach((button) => {
+    const isActive = button.dataset.zoom === activeZoom;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
+}
+
+async function setLightningZoom(nextZoom) {
+  const resolved = LIGHTNING_ZOOM_OPTIONS.some((option) => option.key === nextZoom)
+    ? nextZoom
+    : "local";
+  if (state.lhZoom === resolved) {
+    return;
+  }
+  stopLightningPlayback();
+  cancelGafHourlyIdlePrefetch();
+  state.lhZoom = resolved;
+  // Pack key changes between Regional and National — drop cached season cube.
+  lightningPlayback.gafSeasonMap = null;
+  lightningPlayback.gafSeasonKey = null;
+  lightningPlayback.gafHoursLoaded = false;
+  resetLightningHourlyLayoutState();
+  state.lightningHeatmapScaleRef = null;
+  updateLightningZoomToggle();
+  if (state.displayedSection === "precipitation") {
+    await fetchCharts();
+  }
+}
 
 function shouldSkipLightningHourlyTopoRelayout(host) {
   return host?.dataset?.figureId === "lightning_heatmap"
@@ -2773,6 +4029,12 @@ function setLightningHourDisplay(hourValue) {
 }
 
 async function ensureLightningHourlyFramesLoaded(icao = els.icao.value) {
+  if (isLightningGafZoom()) {
+    await ensureLightningGafAreasLoaded();
+    await ensureLightningGafSeasonLoaded(els.season?.value || "all", { includeHours: true });
+    return;
+  }
+
   const code = String(icao || "").trim().toUpperCase();
   if (!supportsLightningHeatmapHourly(code)) {
     throw new Error("Hourly lightning heatmap is not available for this aerodrome");
@@ -2824,21 +4086,26 @@ function buildLightningHeatmapZFromGrid(zGrid, meta = {}) {
 function lightningHeatmapRestylePatch(z, scale = {}) {
   const scaleMin = Number(scale.zmin) || 0;
   const scaleMax = Math.max(scaleMin + 1, Number(scale.zmax) || 1);
-  const dtick = lightningColorbarDtick(scaleMin, scaleMax);
+  const colorbar = lightningHeatmapColorbar();
   const patch = {
     zmin: [scaleMin],
     zmax: [scaleMax],
     zauto: [false],
     showscale: [true],
     colorscale: [LIGHTNING_HEATMAP_COLORSCALE],
-    "colorbar.dtick": [dtick],
-    "colorbar.tick0": [Math.floor(scaleMin / dtick) * dtick],
-    "colorbar.title.text": ["Strike count"],
-    "colorbar.x": [1.02],
-    "colorbar.xanchor": ["left"],
-    "colorbar.y": [0.5],
-    "colorbar.yanchor": ["middle"],
-    "colorbar.len": [0.75],
+    "colorbar.title": [colorbar.title],
+    "colorbar.x": [colorbar.x],
+    "colorbar.xanchor": [colorbar.xanchor],
+    "colorbar.y": [colorbar.y],
+    "colorbar.yanchor": [colorbar.yanchor],
+    "colorbar.len": [colorbar.len],
+    "colorbar.lenmode": [colorbar.lenmode],
+    "colorbar.thickness": [colorbar.thickness],
+    "colorbar.xpad": [colorbar.xpad],
+    "colorbar.ypad": [colorbar.ypad],
+    "colorbar.outlinewidth": [colorbar.outlinewidth],
+    "colorbar.outlinecolor": [colorbar.outlinecolor],
+    "colorbar.tickmode": ["auto"],
   };
   if (z != null) {
     patch.z = [z];
@@ -2917,6 +4184,7 @@ function finalizeLightningHeatmapPostRender(host, scale, { icao = "", captureSum
     .then(() => scheduleHostResize(host))
     .then(async () => {
       await awaitLayoutSettle();
+      await ensureLightningRingTracesOnHost(host);
       if (captureSummary) {
         captureLightningHeatmapSummaryLayoutRef(host);
       }
@@ -2924,6 +4192,30 @@ function finalizeLightningHeatmapPostRender(host, scale, { icao = "", captureSum
         await finalizeLightningHourlyLayoutPin(host);
       }
     });
+}
+
+async function ensureLightningRingTracesOnHost(host) {
+  if (!host?.data) {
+    return;
+  }
+  const existing = (host.data || []).filter((trace) => trace?.name === LIGHTNING_RING_TRACE_NAME);
+  if (existing.length) {
+    return;
+  }
+  const rings = lightningRingTracesForCurrentView(host);
+  if (!rings.length) {
+    return;
+  }
+  // Keep GAF airport markers/labels above the rings.
+  const insertAt = (host.data || []).findIndex((trace) => {
+    const name = String(trace?.name || "");
+    return name === "__gaf_boundaries" || name.startsWith("__gaf_airports");
+  });
+  if (insertAt >= 0) {
+    await Plotly.addTraces(host, rings, insertAt);
+  } else {
+    await Plotly.addTraces(host, rings);
+  }
 }
 
 async function pinLightningHeatmapHourlyLayout(host) {
@@ -3055,6 +4347,33 @@ async function renderLightningHeatmapHourFrameCore(hour, section = state.display
   const icao = els.icao.value;
   const season = els.season.value;
   await ensureLightningHourlyFramesLoaded(icao);
+
+  if (isLightningGafZoom() || isGafLightningFigure({ layout: host.layout })) {
+    const ctx = getLightningHourlyPinContext(host);
+    const overlay = getLightningOverlayHost();
+    const overlayHasData = Boolean(overlay && overlay.data?.length);
+    const sameMaximized = lightningPlayback.pinnedMaximized === ctx.maximized;
+    // Ignore sub-pixel/1px offset noise so a stray relayout does not trigger a full
+    // mid-scrub rebuild. Only a real maximize/restore or resize should re-seal.
+    const sizeStable = Math.abs((lightningPlayback.pinnedWidth || 0) - ctx.width) <= 2
+      && Math.abs((lightningPlayback.pinnedHeight || 0) - ctx.height) <= 2;
+    if (lightningPlayback.overlayActive && overlayHasData && sameMaximized && sizeStable) {
+      await restyleGafLightningHour(host, hour);
+      return;
+    }
+    // During playback/frame updates never do a full rebuild (it looks like a jump);
+    // restyle the existing overlay if we have one, otherwise wait for the next
+    // explicit seal (maximize/restore, zoom, season change, debounced resize).
+    if (lightningPlayback.playing || lightningPlayback.frameUpdating) {
+      if (overlayHasData) {
+        await restyleGafLightningHour(host, hour);
+      }
+      return;
+    }
+    await rebuildAndSealGafLightningHost(host, section);
+    return;
+  }
+
   const zGrid = lookupLiteLightningHourlyGrid(lightningPlayback.liteHourlyMap, season, hour);
 
   // Scrub only the transparent overlay; the base map (with the colorbar) is never
@@ -3115,9 +4434,14 @@ function resetLightningHeatmapModeOnSectionChange(nextSection) {
   stopLightningPlayback();
   if (nextSection !== "precipitation") {
     state.lhMode = "summary";
+    state.lhZoom = "local";
     state.lightningHeatmapScaleRef = null;
     lightningPlayback.liteHourlyMap = null;
     lightningPlayback.liteHourlyIcao = null;
+    lightningPlayback.gafSeasonMap = null;
+    lightningPlayback.gafSeasonKey = null;
+    lightningPlayback.gafHoursLoaded = false;
+    cancelGafHourlyIdlePrefetch();
     resetLightningHourlyLayoutState();
   }
 }
@@ -3130,6 +4454,7 @@ function renderLightningHeatmapToolbar(section = state.displayedSection) {
     if (els.lhToolbarContainer && els.lhToolbarContainer.parentElement) {
       els.lhToolbarContainer.parentElement.removeChild(els.lhToolbarContainer);
     }
+    updateLightningZoomToggle();
     return;
   }
 
@@ -3176,6 +4501,7 @@ function renderLightningHeatmapToolbar(section = state.displayedSection) {
   }
   updateLightningPlayButton();
   syncLightningHourlyColorbarVisibility(section);
+  updateLightningZoomToggle();
 }
 
 function attachLightningHeatmapListeners() {
@@ -3279,8 +4605,12 @@ function fillSelect(select, options, selectedValue) {
 }
 
 function monthNameFromNumber(value) {
+  const months = state.options?.months || [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
   const idx = Math.max(1, Math.min(12, Number(value))) - 1;
-  return state.options.months[idx];
+  return months[idx];
 }
 
 function seasonMonthConfig(season) {
@@ -3297,14 +4627,6 @@ function seasonMonthConfig(season) {
   return configs[season] || configs.all;
 }
 
-function applySeasonMonthRange() {
-  const config = seasonMonthConfig(els.season.value);
-  els.monthStart.value = String(config.monthStart);
-  els.monthEnd.value = String(config.monthEnd);
-  els.invertMonth.checked = config.invertMonth;
-  updateSliderLabels();
-}
-
 function refreshSeasonSelection() {
   stopWindRosePlayback();
   stopLightningPlayback();
@@ -3313,8 +4635,11 @@ function refreshSeasonSelection() {
   resetWindRoseHourlyScale();
   state.lightningHeatmapScaleRef = null;
   state.lightningHeatmapSummaryLayoutRef = null;
+  lightningPlayback.gafSeasonMap = null;
+  lightningPlayback.gafSeasonKey = null;
+  lightningPlayback.gafHoursLoaded = false;
+  cancelGafHourlyIdlePrefetch();
   resetLightningHourlyLayoutState();
-  applySeasonMonthRange();
   clearChartAxisLocks();
   fetchCharts();
 }
@@ -3322,91 +4647,6 @@ function refreshSeasonSelection() {
 function clearChartAxisLocks() {
   state.axisLocks = {};
   state.stackedAxisLabelLocks = {};
-}
-
-function updateDualSliderTrack(def) {
-  const minInput = document.getElementById(def.minEl);
-  const maxInput = document.getElementById(def.maxEl);
-  const highlight = document.getElementById(def.highlightEl);
-  const invertInput = def.invertEl ? document.getElementById(def.invertEl) : null;
-
-  const min = Number(minInput.min);
-  const max = Number(minInput.max);
-  const start = Number(minInput.value);
-  const end = Number(maxInput.value);
-
-  const span = Math.max(1, max - min);
-  const startPct = ((start - min) / span) * 100;
-  const endPct = ((end - min) / span) * 100;
-  const isInverted = Boolean(invertInput && invertInput.checked);
-
-  // Use two-tone track colors so invert mode is visibly different at a glance.
-  const selectedColor = "rgba(170, 214, 255, 0.95)";
-  const unselectedColor = "rgba(17, 43, 88, 0.45)";
-
-  highlight.style.left = "0%";
-  highlight.style.width = "100%";
-
-  if (isInverted) {
-    highlight.style.background = `linear-gradient(to right, ${selectedColor} 0%, ${selectedColor} ${startPct}%, ${unselectedColor} ${startPct}%, ${unselectedColor} ${endPct}%, ${selectedColor} ${endPct}%, ${selectedColor} 100%)`;
-    highlight.classList.add("is-inverted");
-    return;
-  }
-
-  highlight.style.background = `linear-gradient(to right, ${unselectedColor} 0%, ${unselectedColor} ${startPct}%, ${selectedColor} ${startPct}%, ${selectedColor} ${endPct}%, ${unselectedColor} ${endPct}%, ${unselectedColor} 100%)`;
-  highlight.classList.remove("is-inverted");
-}
-
-function updateSliderLabels() {
-  dualSliderDefs.forEach((def) => {
-    const minInput = document.getElementById(def.minEl);
-    const maxInput = document.getElementById(def.maxEl);
-    const minValueEl = document.getElementById(def.minValueEl);
-    const maxValueEl = document.getElementById(def.maxValueEl);
-
-    minValueEl.textContent = def.format(minInput.value);
-    maxValueEl.textContent = def.format(maxInput.value);
-    updateDualSliderTrack(def);
-  });
-}
-
-function normalizeRanges(changedField) {
-  let yearStart = Number(els.yearStart.value);
-  let yearEnd = Number(els.yearEnd.value);
-  let monthStart = Number(els.monthStart.value);
-  let monthEnd = Number(els.monthEnd.value);
-  let hourStart = Number(els.hourStart.value);
-  let hourEnd = Number(els.hourEnd.value);
-
-  if (yearStart > yearEnd) {
-    if (changedField === "year-start") {
-      yearEnd = yearStart;
-      els.yearEnd.value = String(yearEnd);
-    } else {
-      yearStart = yearEnd;
-      els.yearStart.value = String(yearStart);
-    }
-  }
-
-  if (monthStart > monthEnd) {
-    if (changedField === "month-start") {
-      monthEnd = monthStart;
-      els.monthEnd.value = String(monthEnd);
-    } else {
-      monthStart = monthEnd;
-      els.monthStart.value = String(monthStart);
-    }
-  }
-
-  if (hourStart > hourEnd) {
-    if (changedField === "hour-start") {
-      hourEnd = hourStart;
-      els.hourEnd.value = String(hourEnd);
-    } else {
-      hourStart = hourEnd;
-      els.hourStart.value = String(hourStart);
-    }
-  }
 }
 
 async function fetchOptions() {
@@ -3426,17 +4666,8 @@ async function fetchOptions() {
 
   fillSelect(els.icao, data.airports, data.defaultAirport);
 
-  els.yearStart.value = data.default.yearStart;
-  els.yearEnd.value = data.default.yearEnd;
-  els.monthStart.value = String(data.months.indexOf(data.default.monthStart) + 1);
-  els.monthEnd.value = String(data.months.indexOf(data.default.monthEnd) + 1);
-  els.hourStart.value = data.default.hourStart;
-  els.hourEnd.value = data.default.hourEnd;
-  els.invertMonth.checked = data.default.invertMonth;
-  els.invertHour.checked = data.default.invertHour;
   state.requestedSection = data.default.section;
   state.displayedSection = data.default.section;
-  updateSliderLabels();
   })();
 
   try {
@@ -3449,26 +4680,32 @@ async function fetchOptions() {
 }
 
 function getParams() {
+  // Climate-driver / free-range filters were removed from the lite UI. Use
+  // season-derived month bounds and full year/hour coverage for any remaining
+  // live-API requests.
+  const monthConfig = seasonMonthConfig(els.season.value);
+  const yearStart = state.options?.default?.yearStart ?? 2000;
+  const yearEnd = state.options?.default?.yearEnd ?? 2025;
   const params = new URLSearchParams({
     section: state.requestedSection,
     season: els.season.value,
-    enso: els.enso.value,
-    iod: els.iod.value,
-    sam: els.sam.value,
-    mjo: els.mjo.value,
+    enso: "all",
+    iod: "all",
+    sam: "all",
+    mjo: "all",
     fogMonthlyMode: state.fogModes.monthly,
     fogHourlyMode: state.fogModes.hourly,
     fogWindMode: state.fogModes.wind,
     fogDewpointMode: state.fogModes.dewpoint,
     icao: els.icao.value,
-    yearStart: String(els.yearStart.value),
-    yearEnd: String(els.yearEnd.value),
-    monthStart: monthNameFromNumber(els.monthStart.value),
-    monthEnd: monthNameFromNumber(els.monthEnd.value),
-    hourStart: String(els.hourStart.value),
-    hourEnd: String(els.hourEnd.value),
-    invertMonth: String(els.invertMonth.checked),
-    invertHour: String(els.invertHour.checked),
+    yearStart: String(yearStart),
+    yearEnd: String(yearEnd),
+    monthStart: monthNameFromNumber(monthConfig.monthStart),
+    monthEnd: monthNameFromNumber(monthConfig.monthEnd),
+    hourStart: "0",
+    hourEnd: "23",
+    invertMonth: String(monthConfig.invertMonth),
+    invertHour: "false",
   });
   return params;
 }
@@ -3490,21 +4727,6 @@ function getSectionFigureBatches(section) {
 }
 
 function validateRanges() {
-  const yearStart = Number(els.yearStart.value);
-  const yearEnd = Number(els.yearEnd.value);
-  const hourStart = Number(els.hourStart.value);
-  const hourEnd = Number(els.hourEnd.value);
-
-  if (Number.isNaN(yearStart) || Number.isNaN(yearEnd) || yearStart > yearEnd) {
-    setStatus("Year range is invalid.");
-    return false;
-  }
-
-  if (Number.isNaN(hourStart) || Number.isNaN(hourEnd) || hourStart > hourEnd) {
-    setStatus("Hour range is invalid.");
-    return false;
-  }
-
   return true;
 }
 
@@ -6963,13 +8185,14 @@ function applyPersistentAxisLock(figure, figureId) {
 }
 
 function frequencyAxisLockKey(figureId = "") {
+  const monthConfig = seasonMonthConfig(els.season.value);
   return [
     els.icao.value,
     figureId,
     els.season.value,
-    els.monthStart.value,
-    els.monthEnd.value,
-    els.invertMonth.checked ? "1" : "0",
+    monthConfig.monthStart,
+    monthConfig.monthEnd,
+    monthConfig.invertMonth ? "1" : "0",
   ].join("::");
 }
 
@@ -7087,7 +8310,14 @@ function remapFogFigureToSeasonMonths(figure, targetMonthLabels) {
 }
 
 function filterCategoryTracesToSeasonMonths(figure, targetMonthLabels) {
-  const targetSet = new Set(targetMonthLabels);
+  // Rebuild each categorical month trace in *season* order. Wrap seasons
+  // (Summer, Tropical Wet) store points in calendar order (Jan…Dec) while the
+  // axis is Dec→Jan→Feb / Oct→…→Apr; connecting in calendar order draws the
+  // line backward across the axis and looks like doubled segments.
+  const byMonthIndex = new Map(
+    targetMonthLabels.map((label, index) => [String(label), index]),
+  );
+
   figure.data = (figure.data || []).map((trace) => {
     const xValues = Array.isArray(trace?.x) ? trace.x : [];
     if (!xValues.length || xValues.some((value) => typeof value === "number")) {
@@ -7096,21 +8326,34 @@ function filterCategoryTracesToSeasonMonths(figure, targetMonthLabels) {
 
     const yValues = alignedValueArray(trace?.y);
     const customdata = Array.isArray(trace?.customdata) ? trace.customdata.slice() : null;
-    const newX = [];
-    const newY = [];
-    const newCustom = [];
+    const slots = targetMonthLabels.map(() => null);
 
     for (let i = 0; i < xValues.length; i += 1) {
       const monthLabel = String(xValues[i]);
-      if (!targetSet.has(monthLabel)) {
+      const slot = byMonthIndex.get(monthLabel);
+      if (slot == null) {
         continue;
       }
-      newX.push(monthLabel);
-      newY.push(yValues[i]);
-      if (customdata) {
-        newCustom.push(customdata[i]);
-      }
+      slots[slot] = {
+        x: monthLabel,
+        y: yValues[i],
+        custom: customdata ? customdata[i] : undefined,
+      };
     }
+
+    const newX = [];
+    const newY = [];
+    const newCustom = [];
+    slots.forEach((slot) => {
+      if (!slot) {
+        return;
+      }
+      newX.push(slot.x);
+      newY.push(slot.y);
+      if (customdata) {
+        newCustom.push(slot.custom);
+      }
+    });
 
     const next = { ...trace, x: newX, y: newY };
     if (customdata) {
@@ -7168,15 +8411,14 @@ function enforceFrequencyMonthAxis(figure, figureId) {
   if (FOG_MONTHLY_FIGURE_IDS.has(figureId) && usesNumericMonthPositions(figure) && seasonMonths.length) {
     remapFogFigureToSeasonMonths(figure, seasonMonths);
     months = seasonMonths;
-  } else if (!months.length && seasonMonths.length) {
-    months = seasonMonths;
-  } else if (
-    seasonMonths.length
-    && months.length > seasonMonths.length
-    && months.every(isMonthAxisLabel)
-  ) {
-    months = seasonMonths;
+  } else if (seasonMonths.length) {
+    // Always pin wrap-season charts to season order and rewrite categorical
+    // traces to match (filter + reorder). Needed even when the figure already
+    // has the right *set* of months but in calendar order.
     filterCategoryTracesToSeasonMonths(figure, seasonMonths);
+    months = seasonMonths;
+  } else if (!months.length) {
+    return;
   }
 
   if (!months.length) {
@@ -7375,22 +8617,14 @@ function rescaleAfterLegendToggle(host) {
 }
 
 function stackedUirevisionToken(figureId = "") {
+  const monthConfig = seasonMonthConfig(els.season.value);
   return [
     els.icao.value,
     figureId,
     els.season.value,
-    els.enso.value,
-    els.iod.value,
-    els.sam.value,
-    els.mjo.value,
-    els.yearStart.value,
-    els.yearEnd.value,
-    els.monthStart.value,
-    els.monthEnd.value,
-    els.hourStart.value,
-    els.hourEnd.value,
-    els.invertMonth.checked ? "1" : "0",
-    els.invertHour.checked ? "1" : "0",
+    monthConfig.monthStart,
+    monthConfig.monthEnd,
+    monthConfig.invertMonth ? "1" : "0",
     state.fogModes.monthly,
     state.fogModes.hourly,
     state.fogModes.wind,
@@ -7472,12 +8706,11 @@ function getChartHeight(section) {
   const controlsHeight = document.querySelector(".controls")?.offsetHeight ?? 0;
   const statusHeight = els.status.offsetHeight ?? 0;
   const metricsHeight = els.metrics.offsetHeight ?? 0;
-  const footerHeight = document.querySelector(".time-controls")?.offsetHeight ?? 0;
   const viewportHeight = window.innerHeight;
   
   // Reserve room for page padding, the 2-row grid gap, and Plotly card chrome.
   const fixedChrome = 40;
-  const available = Math.max(0, viewportHeight - headerHeight - controlsHeight - statusHeight - metricsHeight - footerHeight - fixedChrome);
+  const available = Math.max(0, viewportHeight - headerHeight - controlsHeight - statusHeight - metricsHeight - fixedChrome);
 
   if (isExpandedSection) {
     // For expanded sections, we use more of the available viewport height, up to a max
@@ -7586,6 +8819,12 @@ async function refreshMaximizedChartLayout(host) {
     return;
   }
 
+  if (host.dataset?.figureId === "lightning_heatmap"
+    && (isLightningGafZoom() || isGafLightningFigure({ layout: host.layout }))) {
+    await rebuildAndSealGafLightningHost(host);
+    return;
+  }
+
   if (host.dataset?.figureId === "lightning_heatmap" && shouldUseHourlyLightningHeatmap()) {
     teardownLightningOverlay();
     await awaitLayoutSettle();
@@ -7627,11 +8866,20 @@ function prepareChartsRender(figures) {
 }
 
 async function renderChartsToDom(figures, section = state.displayedSection, onProgress) {
-  // Remove any stale lightning overlay before re-rendering the base charts; it is
-  // rebuilt afterwards when hourly mode is active.
+  // Remove any stale lightning overlay before re-rendering the base charts. Both
+  // local and GAF hourly rebuild it afterwards: local via enterLightningHourlyOverlay,
+  // GAF via sealGafLightningHost (which enters a scrub overlay on the sealed base).
   teardownLightningOverlay();
   const visibleFigures = prepareChartsRender(figures);
   const isExpandedSection = section === "wind";
+  const hasGafLightning = isLightningGafZoom()
+    && visibleFigures.some((item) => item.id === "lightning_heatmap");
+  if (hasGafLightning) {
+    bumpLightningLayoutGeneration();
+    applyMaximizedChartState();
+    applyChartShellHeights(section);
+    await awaitLayoutSettle();
+  }
   const chartHeight = applyChartShellHeights(section);
   const totalCharts = visibleFigures.length;
   let completedCharts = 0;
@@ -7702,14 +8950,16 @@ async function renderChartsToDom(figures, section = state.displayedSection, onPr
       enforceHourlyPrecipDualAxisLayout(figure, targetChartHeight);
     }
     if (item.id === "lightning_heatmap") {
-      const hourlyScale = shouldUseHourlyLightningHeatmap(section) ? ensureLightningHourlyScale(icao, season) : null;
-      const scale = applyLightningHeatmapStyle(figure, {
-        icao,
-        season,
-        fixedScale: hourlyScale,
-      });
-      if (state.lhMode === "summary" && supportsLightningHeatmapHourly(icao) && scale) {
-        state.lightningHeatmapScaleRef = { ...scale };
+      if (!isGafLightningFigure(figure)) {
+        const hourlyScale = shouldUseHourlyLightningHeatmap(section) ? ensureLightningHourlyScale(icao, season) : null;
+        const scale = applyLightningHeatmapStyle(figure, {
+          icao,
+          season,
+          fixedScale: hourlyScale,
+        });
+        if (state.lhMode === "summary" && supportsLightningHeatmapHourly(icao) && scale) {
+          state.lightningHeatmapScaleRef = { ...scale };
+        }
       }
     }
     prepareFrequencyFigureGeometry(figure, item.id || "");
@@ -7748,7 +8998,17 @@ async function renderChartsToDom(figures, section = state.displayedSection, onPr
       figure.layout.height = targetChartHeight;
       delete figure.layout.width;
     }
-    if (isMaximized) {
+    if (item.id === "lightning_heatmap" && isGafLightningFigure(figure)) {
+      const hostWidth = Math.round(host.offsetWidth || host.clientWidth || 0);
+      const hostHeight = Math.round(host.offsetHeight || host.clientHeight || targetChartHeight || 0);
+      if (hostWidth > 0) {
+        figure.layout.width = hostWidth;
+      }
+      if (hostHeight > 0) {
+        figure.layout.height = hostHeight;
+      }
+      figure.layout.autosize = false;
+    } else if (isMaximized) {
       figure.layout.autosize = true;
       delete figure.layout.width;
     }
@@ -7766,7 +9026,9 @@ async function renderChartsToDom(figures, section = state.displayedSection, onPr
       }
     }
     const skipHourlyPrecipMaximizePipeline = isMaximized && item.id === "hourly_precip";
-    const lockLightningHourlyPlot = item.id === "lightning_heatmap" && shouldUseHourlyLightningHeatmap(section);
+    const isGafLightning = item.id === "lightning_heatmap" && isGafLightningFigure(figure);
+    const lockLightningHourlyPlot = isGafLightning
+      || (item.id === "lightning_heatmap" && shouldUseHourlyLightningHeatmap(section));
     return Plotly.react(host, figure.data || [], figure.layout || {}, {
       displayModeBar: false,
       responsive: !lockLightningHourlyPlot,
@@ -7800,6 +9062,9 @@ async function renderChartsToDom(figures, section = state.displayedSection, onPr
           return relayoutScatterWindDewptAxes(host, targetChartHeight);
         }
         if (item.id === "lightning_heatmap") {
+          if (isGafLightningFigure(item.figure)) {
+            return Promise.resolve();
+          }
           const meta = item.figure?.layout?.meta || {};
           const activeScaleRef = shouldUseHourlyLightningHeatmap(section)
             ? ensureLightningHourlyScale(icao, season)
@@ -7856,9 +9121,17 @@ async function renderChartsToDom(figures, section = state.displayedSection, onPr
     if (maximizedHost.dataset?.figureId === "hourly_precip") {
       const chartHeight = Number.parseFloat(maximizedHost.style.height) || null;
       await finalizeHourlyPrecipMaximizedLayout(maximizedHost, chartHeight);
-    } else {
+    } else if (!(
+      maximizedHost.dataset?.figureId === "lightning_heatmap"
+      && (isLightningGafZoom() || isGafLightningFigure({ layout: maximizedHost.layout }))
+    )) {
       await refreshMaximizedChartLayout(maximizedHost);
     }
+  }
+
+  const gafLightningIndex = visibleFigures.findIndex((item) => item.id === "lightning_heatmap");
+  if (gafLightningIndex >= 0 && isLightningGafZoom()) {
+    await sealGafLightningHost(els.charts[gafLightningIndex]);
   }
 
   const windRoseIndex = visibleFigures.findIndex((item) => item.id === "wind_rose");
@@ -7964,17 +9237,12 @@ function applyTopoMapPanelLayout(figure, figureId = "", options = {}) {
       domain: domainY,
       automargin: false,
     };
-    enforceLightningHeatmapTopoAxis(figure);
+    if (!isGafLightningFigure(figure)) {
+      enforceLightningHeatmapTopoAxis(figure);
+    }
     const trace = (figure.data || []).find((entry) => String(entry?.type || "").toLowerCase() === "heatmap");
     if (trace) {
-      trace.colorbar = {
-        ...(trace.colorbar || {}),
-        x: 1.02,
-        xanchor: "left",
-        len: 0.75,
-        y: 0.5,
-        yanchor: "middle",
-      };
+      trace.colorbar = lightningHeatmapColorbar(trace.colorbar || {});
     }
     return;
   }
@@ -8008,12 +9276,34 @@ function buildTopoMapPanelRelayout(host) {
       "yaxis.domain": domainY,
     });
     const meta = host?.layout?.meta || {};
+    if (String(meta.lightningView || "") === "gaf") {
+      const bbox = Array.isArray(meta.gafBbox) ? meta.gafBbox : null;
+      if (bbox && bbox.length === 4) {
+        relayout["xaxis.range"] = [bbox[2], bbox[3]];
+        relayout["yaxis.range"] = [bbox[0], bbox[1]];
+        relayout["xaxis.autorange"] = false;
+        relayout["yaxis.autorange"] = false;
+      }
+      return relayout;
+    }
     const halfExtent = Number(meta.topoExtentKm) / 2;
     if (Number.isFinite(halfExtent) && halfExtent > 0) {
       relayout["xaxis.range"] = [-halfExtent, halfExtent];
       relayout["yaxis.range"] = [-halfExtent, halfExtent];
       relayout["xaxis.autorange"] = false;
       relayout["yaxis.autorange"] = false;
+      relayout["xaxis.title"] = { text: "" };
+      relayout["yaxis.title"] = { text: "" };
+      relayout["xaxis.showgrid"] = false;
+      relayout["yaxis.showgrid"] = false;
+      relayout["xaxis.zeroline"] = false;
+      relayout["yaxis.zeroline"] = false;
+      relayout["xaxis.showline"] = false;
+      relayout["yaxis.showline"] = false;
+      relayout["xaxis.ticks"] = "";
+      relayout["yaxis.ticks"] = "";
+      relayout["xaxis.showticklabels"] = false;
+      relayout["yaxis.showticklabels"] = false;
       relayout["xaxis.tickmode"] = "array";
       relayout["xaxis.tickvals"] = [0];
       relayout["xaxis.ticktext"] = [""];
@@ -8054,23 +9344,29 @@ function relayoutTopoMapPanel(host) {
   });
 }
 
-function lightningColorbarDtick(zmin, zmax) {
-  const span = Math.max(1, (Number(zmax) || 1) - (Number(zmin) || 0));
-  const targetTicks = 5;
-  const raw = span / targetTicks;
-  const magnitude = 10 ** Math.floor(Math.log10(raw));
-  const normalized = raw / magnitude;
-  let step = magnitude;
-  if (normalized <= 1) {
-    step = magnitude;
-  } else if (normalized <= 2) {
-    step = 2 * magnitude;
-  } else if (normalized <= 5) {
-    step = 5 * magnitude;
-  } else {
-    step = 10 * magnitude;
-  }
-  return step;
+function lightningHeatmapColorbar(extra = {}) {
+  // Shared formatting wins over any prior colorbar fields so aerodrome / GAF /
+  // region legends stay visually identical (scale values are set separately).
+  const colorbar = {
+    ...extra,
+    title: { text: "Strike count" },
+    x: 1.02,
+    xanchor: "left",
+    len: 0.75,
+    lenmode: "fraction",
+    y: 0.5,
+    yanchor: "middle",
+    thickness: 18,
+    xpad: 0,
+    ypad: 0,
+    outlinewidth: 1,
+    outlinecolor: "rgb(68, 68, 68)",
+  };
+  // Drop aerodrome-only tick forcing so Plotly auto-formats like GAF/region.
+  delete colorbar.tickmode;
+  delete colorbar.dtick;
+  delete colorbar.tick0;
+  return colorbar;
 }
 
 function lightningHeatmapColorRange(zGrid, { percentile = LIGHTNING_HEATMAP_COLOR_PERCENTILE } = {}) {
@@ -8100,29 +9396,6 @@ function lightningHeatmapColorRange(zGrid, { percentile = LIGHTNING_HEATMAP_COLO
     zmax = zpeak;
   }
   return { zmin, zmax };
-}
-
-function applyLightningHeatmapRingOverlays(figure) {
-  figure.layout = figure.layout || {};
-  const radii = LIGHTNING_HEATMAP_RING_RADII_KM;
-  const nonRingShapes = (figure.layout.shapes || []).filter(
-    (shape) => !(shape?.type === "circle" && shape?.xref === "x" && shape?.yref === "y"),
-  );
-  const ringShapes = radii.map((radius) => ({
-    type: "circle",
-    xref: "x",
-    yref: "y",
-    x0: -radius,
-    y0: -radius,
-    x1: radius,
-    y1: radius,
-    line: { color: "rgba(255,255,255,0.9)", width: 1.5 },
-    fillcolor: "rgba(0,0,0,0)",
-  }));
-  figure.layout.shapes = [...ringShapes, ...nonRingShapes];
-  figure.layout.annotations = (figure.layout.annotations || []).filter(
-    (entry) => !(entry?.xref === "x" && entry?.yref === "y" && radii.includes(Number(entry?.y))),
-  );
 }
 
 function lightningHeatmapGeometry(meta = {}) {
@@ -8223,21 +9496,20 @@ function applyLightningHeatmapStyle(figure, { icao = "", season = "all", fixedSc
   trace.hoverongaps = false;
   trace.colorscale = LIGHTNING_HEATMAP_COLORSCALE;
   trace.opacity = LIGHTNING_HEATMAP_OPACITY;
-  const dtick = lightningColorbarDtick(resolvedZmin, resolvedZmax);
-  trace.colorbar = {
-    ...(trace.colorbar || {}),
-    title: { text: "Strike count" },
-    tickmode: "linear",
-    tick0: Math.floor(resolvedZmin / dtick) * dtick,
-    dtick,
-    x: 1.02,
-    xanchor: "left",
-    y: 0.5,
-    yanchor: "middle",
-    len: 0.75,
-  };
+  // Match GAF/region colorbar chrome (thickness, padding, auto tick formatting).
+  trace.colorbar = lightningHeatmapColorbar(trace.colorbar || {});
 
   figure.layout = figure.layout || {};
+  const priorTitle = figure.layout.title;
+  figure.layout.title = {
+    ...(typeof priorTitle === "object" && priorTitle ? priorTitle : {}),
+    text: "Lightning Strike Frequency",
+    font: { size: 14, ...((typeof priorTitle === "object" && priorTitle?.font) || {}) },
+    x: 0.01,
+    xanchor: "left",
+    y: 0.98,
+    yanchor: "top",
+  };
   const scaleToken = fixedScale
     ? String(Math.round(resolvedZmax))
     : `${String(Math.round(resolvedZmin))}-${String(Math.round(resolvedZmax))}`;
@@ -8266,18 +9538,30 @@ function enforceLightningHeatmapTopoAxis(figure) {
   figure.layout = figure.layout || {};
   figure.layout.xaxis = {
     ...(figure.layout.xaxis || {}),
+    title: { text: "" },
     range: [-halfExtent, halfExtent],
     scaleanchor: "y",
     scaleratio: 1,
     autorange: false,
+    showgrid: false,
+    zeroline: false,
+    showline: false,
+    ticks: "",
+    showticklabels: false,
     tickmode: "array",
     tickvals: [0],
     ticktext: [""],
   };
   figure.layout.yaxis = {
     ...(figure.layout.yaxis || {}),
+    title: { text: "" },
     range: [-halfExtent, halfExtent],
     autorange: false,
+    showgrid: false,
+    zeroline: false,
+    showline: false,
+    ticks: "",
+    showticklabels: false,
     tickmode: "array",
     tickvals: [0],
     ticktext: [""],
@@ -9123,18 +10407,30 @@ async function prepareCartesianTopoBackground(figure, icao, axisExtentKm = 24, {
   const halfExtent = displayExtentKm / 2;
   figure.layout.xaxis = {
     ...(figure.layout.xaxis || {}),
+    title: { text: "" },
     range: [-halfExtent, halfExtent],
     scaleanchor: "y",
     scaleratio: 1,
     autorange: false,
+    showgrid: false,
+    zeroline: false,
+    showline: false,
+    ticks: "",
+    showticklabels: false,
     tickmode: "array",
     tickvals: [0],
     ticktext: [""],
   };
   figure.layout.yaxis = {
     ...(figure.layout.yaxis || {}),
+    title: { text: "" },
     range: [-halfExtent, halfExtent],
     autorange: false,
+    showgrid: false,
+    zeroline: false,
+    showline: false,
+    ticks: "",
+    showticklabels: false,
     tickmode: "array",
     tickvals: [0],
     ticktext: [""],
@@ -9146,6 +10442,9 @@ async function prepareChartTerrainBackground(figure, icao, figureId = "") {
     return;
   }
   if (figureId === "lightning_heatmap") {
+    if (isGafLightningFigure(figure)) {
+      return;
+    }
     const extentKm = Number(figure?.layout?.meta?.topoExtentKm) || 24;
     return prepareCartesianTopoBackground(figure, icao, extentKm, { opacity: TOPO_MAP_PANEL.backgroundOpacity });
   }
@@ -9344,6 +10643,14 @@ function initializeChartContainerResizeObservers() {
       }
 
       lastSizes.set(card, { width, height });
+      if (host.dataset?.figureId === "lightning_heatmap"
+        && (isLightningGafZoom() || isGafLightningFigure({ layout: host.layout }))) {
+        if (lightningPlayback.frameUpdating) {
+          return;
+        }
+        scheduleGafLightningSeal(host);
+        return;
+      }
       if (shouldSkipLightningHourlyTopoRelayout(host)) {
         return;
       }
@@ -9435,7 +10742,10 @@ async function fetchChartsLite() {
         await applyHourlyWindRoseOverride(data, icao, season);
       }
 
-      if (shouldUseHourlyLightningHeatmap(section)) {
+      if (isLightningGafZoom() && section === "precipitation") {
+        reportFetchProgress(1, 1, "Preparing regional lightning...");
+        await applyGafLightningHeatmapOverride(data, icao, season);
+      } else if (shouldUseHourlyLightningHeatmap(section)) {
         reportFetchProgress(1, 1, "Preparing lightning heatmap...");
         await applyHourlyLightningHeatmapOverride(data, icao, season);
       }
@@ -9605,6 +10915,11 @@ function wireControls() {
     resetWindRoseHourlyScale();
     lightningPlayback.liteHourlyMap = null;
     lightningPlayback.liteHourlyIcao = null;
+    // Regional pack id follows GAF/pair; clear so the next load picks the right cube.
+    lightningPlayback.gafSeasonMap = null;
+    lightningPlayback.gafSeasonKey = null;
+    lightningPlayback.gafHoursLoaded = false;
+    cancelGafHourlyIdlePrefetch();
     resetLightningHourlyLayoutState();
     state.lhMode = "summary";
     state.lightningHeatmapScaleRef = null;
@@ -9617,38 +10932,6 @@ function wireControls() {
     fetchCharts();
   });
   els.season.addEventListener("change", refreshSeasonSelection);
-
-  if (!state.liteMode) {
-    [els.enso, els.iod, els.sam, els.mjo].forEach((el) => {
-      el.addEventListener("change", () => scheduleFetchCharts(DRIVER_FETCH_DEBOUNCE_MS));
-    });
-  }
-
-  [
-    [els.yearStart, "year-start"],
-    [els.yearEnd, "year-end"],
-    [els.monthStart, "month-start"],
-    [els.monthEnd, "month-end"],
-    [els.hourStart, "hour-start"],
-    [els.hourEnd, "hour-end"],
-  ].forEach(([el, field]) => {
-    el.addEventListener("input", () => {
-      normalizeRanges(field);
-      updateSliderLabels();
-    });
-    el.addEventListener("change", () => {
-      normalizeRanges(field);
-      updateSliderLabels();
-      fetchCharts();
-    });
-  });
-
-  [els.invertMonth, els.invertHour].forEach((el) => {
-    el.addEventListener("change", () => {
-      updateSliderLabels();
-      fetchCharts();
-    });
-  });
 
   let resizeFrame = null;
   window.addEventListener("resize", () => {
@@ -9693,7 +10976,6 @@ async function init() {
     await loadAirportCoverage();
     if (isLite) {
         // In lite mode, we skip fetchOptions and use the manifest.
-        // Initialize minimal options so month slider labels work correctly.
         state.options = {
             months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
         };
@@ -9715,7 +10997,6 @@ async function init() {
         if (state.manifest?.default?.season && els.season) {
             els.season.value = state.manifest.default.season;
         }
-        applySeasonMonthRange();
         applySectionLayout();
         applyChartShellHeights();
         initializeChartContainerResizeObservers();
@@ -9726,7 +11007,6 @@ async function init() {
 
     renderCategories();
     await fetchOptions();
-    applySeasonMonthRange();
     renderCategories();
     applySectionLayout();
     applyChartShellHeights();

@@ -1,5 +1,5 @@
 {
-  "version": "lite-2.3",
+  "version": "lite-2.4",
   "encoding": "gzip",
   "airports": [
     "BWL",
@@ -282,7 +282,12 @@
     "section": "data-lite/{icao}/{section}/{season}.json.gz",
     "figure": "data-lite/{icao}/figures/{figureId}/{season}_{mode}.json.gz",
     "windRoseHourly": "data-lite/{icao}/wind_rose_hourly.json.gz",
-    "lightningHeatmapHourly": "data-lite/{icao}/lightning_heatmap_hourly.json.gz"
+    "lightningHeatmapHourly": "data-lite/{icao}/lightning_heatmap_hourly.json.gz",
+    "lightningGafAreas": "data-lite/lightning_gaf/areas.json",
+    "lightningGafNationalSummary": "data-lite/lightning_gaf/{season}.summary.json.gz",
+    "lightningGafNationalHours": "data-lite/lightning_gaf/{season}.hours.json.gz",
+    "lightningGafRegionalSummary": "data-lite/lightning_gaf/{season}/{gafOrPair}.summary.json.gz",
+    "lightningGafRegionalHours": "data-lite/lightning_gaf/{season}/{gafOrPair}.hours.json.gz"
   },
   "default": {
     "airport": "YMML",
