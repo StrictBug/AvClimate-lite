@@ -612,6 +612,7 @@ body.lite-mode .lite-only {
 .loading-overlay {
   position: fixed;
   inset: 0;
+  /* Translucent veil: previous charts stay visible and greyed while loading. */
   background: rgba(235, 239, 244, 0.88);
   display: flex;
   align-items: center;
@@ -621,7 +622,7 @@ body.lite-mode .lite-only {
 }
 
 .loading-overlay.is-rendering {
-  background: rgba(235, 239, 244, 0.97);
+  background: rgba(235, 239, 244, 0.94);
 }
 
 .loading-overlay.hidden {

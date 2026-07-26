@@ -1264,6 +1264,7 @@ let loadingFallbackTimer = null;
 let lastProgressAt = 0;
 let transitionToken = 0;
 let activeTransitionToken = 0;
+let viewTransitionInFlight = false;
 let pendingTransitionAbort = null;
 let pendingFetch = null;
 
@@ -1272,6 +1273,26 @@ const LOADING_PHASE = {
   FETCH_END: 70,
   RENDER_END: 95,
 };
+
+function isViewTransitionActive() {
+  return viewTransitionInFlight;
+}
+
+/** Nested fetches must not dismiss the overlay owned by runViewTransition. */
+function announceNestedLoading(message) {
+  if (isViewTransitionActive()) {
+    setLoadingState(Math.max(loadingProgress, LOADING_PHASE.START), message);
+    return false;
+  }
+  showLoading(message);
+  return true;
+}
+
+function releaseNestedLoading(owned) {
+  if (owned) {
+    hideLoading();
+  }
+}
 
 function setStatus(message = "") {
   els.status.textContent = message;
@@ -1386,6 +1407,7 @@ function beginViewTransition(message) {
   transitionToken += 1;
   const token = transitionToken;
   activeTransitionToken = token;
+  viewTransitionInFlight = true;
 
   if (pendingTransitionAbort) {
     pendingTransitionAbort.abort();
@@ -1398,6 +1420,7 @@ function beginViewTransition(message) {
 
   const chartGrid = document.getElementById("chart-grid");
   if (chartGrid) {
+    // Keep previous charts painted (greyed by the translucent overlay) — never blank.
     chartGrid.classList.remove("is-pending-reveal");
     chartGrid.classList.add("is-transitioning");
   }
@@ -1410,13 +1433,8 @@ function beginViewTransition(message) {
 }
 
 function enterRenderPhase() {
-  const chartGrid = document.getElementById("chart-grid");
-  if (chartGrid) {
-    chartGrid.classList.add("is-pending-reveal");
-  }
-  if (els.metrics) {
-    els.metrics.classList.add("is-pending-reveal");
-  }
+  // Status-only: do not hide the chart grid. Old charts stay greyed under the veil
+  // until commit/swap paints the new set, which avoids the white blink.
   els.loadingOverlay.classList.add("is-rendering");
   setLoadingState(LOADING_PHASE.FETCH_END, "Rendering charts...");
 }
@@ -1427,10 +1445,13 @@ function finishViewTransition(token) {
   }
 
   stopLoadingFallbackTimer();
+  viewTransitionInFlight = false;
 
+  // Content is already painted (old greyed, then swapped to new under the veil).
+  // Clear transition flags and dismiss the bubble — never await fade while hidden.
   const chartGrid = document.getElementById("chart-grid");
   if (chartGrid) {
-    chartGrid.classList.remove("is-transitioning", "is-pending-reveal", "is-loading");
+    chartGrid.classList.remove("is-transitioning", "is-pending-reveal");
   }
   if (els.metrics) {
     els.metrics.classList.remove("is-pending-reveal");
@@ -1453,6 +1474,7 @@ function cancelViewTransition(token) {
   }
 
   stopLoadingFallbackTimer();
+  viewTransitionInFlight = false;
 
   const chartGrid = document.getElementById("chart-grid");
   if (chartGrid) {
@@ -1561,7 +1583,18 @@ async function runViewTransition({
       return;
     }
 
-    finishViewTransition(token);
+    // Hold the overlay until Plotly has painted (esp. GAF seal) so the grid
+    // never flashes empty after the loading bubble disappears.
+    if (isLightningGafZoom() && (loadResult.section ?? state.requestedSection) === "precipitation") {
+      setLoadingState(LOADING_PHASE.RENDER_END, "Rendering lightning map...");
+    }
+    await awaitLayoutSettle();
+    await awaitLayoutSettle();
+    if (!isActiveTransition(token)) {
+      return;
+    }
+
+    await finishViewTransition(token);
 
     if (loadResult.statusMessage !== undefined) {
       setStatus(loadResult.statusMessage);
@@ -3213,7 +3246,7 @@ function scheduleGafHourlyIdlePrefetch(season = els.season?.value || "all") {
     if (!isLightningGafZoom() || state.lhMode === "hourly") {
       return;
     }
-    ensureLightningGafSeasonLoaded(season, { includeHours: true })
+    ensureLightningGafSeasonLoaded(season, { includeHours: true, silent: true })
       .then(() => {
         ensureGafLightningHourlyCropCache(els.icao?.value, season);
         ensureLightningGafHourlyScale(els.icao?.value, season);
@@ -3229,7 +3262,7 @@ function scheduleGafHourlyIdlePrefetch(season = els.season?.value || "all") {
 
 async function ensureLightningGafSeasonLoaded(
   season = els.season?.value || "all",
-  { includeHours = false } = {},
+  { includeHours = false, silent = false } = {},
 ) {
   await ensureLightningGafAreasLoaded();
   const view = lightningGafViewSpec();
@@ -3243,29 +3276,32 @@ async function ensureLightningGafSeasonLoaded(
     return lightningPlayback.gafSeasonMap;
   }
 
+  const beginPackLoad = (message) => {
+    if (silent) {
+      return false;
+    }
+    return announceNestedLoading(message);
+  };
+
   if (havePack && needHours && !lightningPlayback.gafHoursLoaded) {
     const hoursUrl = liteLightningGafHoursUrl(season, view);
     const needsFetch = !liteCache.has(hoursUrl);
-    if (needsFetch) {
-      showLoading("Loading hourly lightning...");
-    }
+    const ownedLoading = needsFetch ? beginPackLoad("Loading hourly lightning...") : false;
     try {
       const hoursPayload = await fetchJsonCached(hoursUrl);
       lightningPlayback.gafSeasonMap.hours = hoursPayload.hours;
       lightningPlayback.gafHoursLoaded = true;
     } finally {
-      if (needsFetch) {
-        hideLoading();
-      }
+      releaseNestedLoading(ownedLoading);
     }
     return lightningPlayback.gafSeasonMap;
   }
 
   const summaryUrl = liteLightningGafSummaryUrl(season, view);
   const needsSummaryFetch = !liteCache.has(summaryUrl);
-  if (needsSummaryFetch) {
-    showLoading("Preparing regional lightning...");
-  }
+  const ownedSummaryLoading = needsSummaryFetch
+    ? beginPackLoad("Preparing regional lightning...")
+    : false;
   try {
     const summaryPayload = await fetchJsonCached(summaryUrl);
     lightningPlayback.gafSeasonMap = summaryPayload;
@@ -3274,25 +3310,21 @@ async function ensureLightningGafSeasonLoaded(
       && summaryPayload.hours.length >= 24;
     lightningPlayback.gafHourlyCropCache = null;
   } finally {
-    if (needsSummaryFetch) {
-      hideLoading();
-    }
+    releaseNestedLoading(ownedSummaryLoading);
   }
 
   if (needHours && !lightningPlayback.gafHoursLoaded) {
     const hoursUrl = liteLightningGafHoursUrl(season, view);
     const needsHoursFetch = !liteCache.has(hoursUrl);
-    if (needsHoursFetch) {
-      showLoading("Loading hourly lightning...");
-    }
+    const ownedHoursLoading = needsHoursFetch
+      ? beginPackLoad("Loading hourly lightning...")
+      : false;
     try {
       const hoursPayload = await fetchJsonCached(hoursUrl);
       lightningPlayback.gafSeasonMap.hours = hoursPayload.hours;
       lightningPlayback.gafHoursLoaded = true;
     } finally {
-      if (needsHoursFetch) {
-        hideLoading();
-      }
+      releaseNestedLoading(ownedHoursLoading);
     }
   }
   return lightningPlayback.gafSeasonMap;
@@ -3958,16 +3990,174 @@ async function setLightningZoom(nextZoom) {
   stopLightningPlayback();
   cancelGafHourlyIdlePrefetch();
   state.lhZoom = resolved;
-  // Pack key changes between Regional and National — drop cached season cube.
+  // Pack key changes between Regional and National — drop in-memory cube (liteCache kept).
   lightningPlayback.gafSeasonMap = null;
   lightningPlayback.gafSeasonKey = null;
   lightningPlayback.gafHoursLoaded = false;
   resetLightningHourlyLayoutState();
   state.lightningHeatmapScaleRef = null;
   updateLightningZoomToggle();
-  if (state.displayedSection === "precipitation") {
-    await fetchCharts();
+  if (state.displayedSection !== "precipitation") {
+    return;
   }
+  if (state.latestFigures.some((item) => item.id === "lightning_heatmap")) {
+    await refreshLightningZoomView();
+    return;
+  }
+  await fetchCharts();
+}
+
+/**
+ * Zoom-only path: keep the other precip charts mounted and only rebuild lightning
+ * under the global loading overlay (no full-grid remount). The previous map stays
+ * visible and greyed under the translucent veil until the new map is swapped in.
+ */
+async function refreshLightningZoomView() {
+  const message = isLightningGafZoom()
+    ? "Preparing regional lightning..."
+    : "Preparing lightning heatmap...";
+  const { token, signal } = beginViewTransition(message);
+
+  try {
+    const host = getLightningHeatmapChartHost();
+    if (!host) {
+      cancelViewTransition(token);
+      await fetchCharts();
+      return;
+    }
+
+    const icao = els.icao?.value || "";
+    const season = els.season?.value || "all";
+    const section = "precipitation";
+
+    if (isLightningGafZoom()) {
+      setLoadingState(mapFetchProgress(0, 1), "Preparing regional lightning...");
+      await ensureLightningGafAreasLoaded();
+      await ensureLightningGafSeasonLoaded(season, {
+        includeHours: state.lhMode === "hourly",
+      });
+      if (!isActiveTransition(token) || signal.aborted) {
+        return;
+      }
+      setLoadingState(LOADING_PHASE.FETCH_END, "Rendering lightning map...");
+      const ok = await rebuildAndSealGafLightningHost(host, section);
+      if (!ok) {
+        throw new Error("Failed to render regional lightning map");
+      }
+      if (state.lhMode === "summary") {
+        scheduleGafHourlyIdlePrefetch(season);
+      }
+    } else {
+      setLoadingState(mapFetchProgress(0, 1), "Preparing lightning heatmap...");
+      const assembled = await assembleLiteFigures(icao, section, season, (completed, total, statusMessage) => {
+        if (!isActiveTransition(token)) {
+          return;
+        }
+        setLoadingState(
+          mapFetchProgress(completed, total),
+          statusMessage || "Fetching lightning heatmap...",
+        );
+      });
+      const data = { figures: assembled?.figures || [] };
+      if (shouldUseHourlyLightningHeatmap(section)) {
+        setLoadingState(mapFetchProgress(1, 1), "Preparing lightning heatmap...");
+        await applyHourlyLightningHeatmapOverride(data, icao, season);
+      }
+      if (!isActiveTransition(token) || signal.aborted) {
+        return;
+      }
+      const lightningItem = data.figures.find((item) => item.id === "lightning_heatmap");
+      if (!lightningItem?.figure) {
+        throw new Error("Lightning heatmap is not available for this aerodrome");
+      }
+      setLoadingState(LOADING_PHASE.FETCH_END, "Rendering lightning map...");
+      await replaceLocalLightningHeatmapHost(host, lightningItem, icao, season, section);
+    }
+
+    await awaitLayoutSettle();
+    await awaitLayoutSettle();
+    if (!isActiveTransition(token)) {
+      return;
+    }
+    updateLightningZoomToggle();
+    renderLightningHeatmapToolbar(section);
+    await finishViewTransition(token);
+  } catch (err) {
+    if (signal.aborted || err?.name === "AbortError" || !isActiveTransition(token)) {
+      return;
+    }
+    console.error(err);
+    setStatus(`Error: ${err.message}`);
+    cancelViewTransition(token);
+  }
+}
+
+async function replaceLocalLightningHeatmapHost(host, lightningItem, icao, season, section) {
+  teardownLightningOverlay();
+  const figure = JSON.parse(JSON.stringify(lightningItem.figure));
+  const lightningIndex = state.latestFigures.findIndex((item) => item.id === "lightning_heatmap");
+  if (lightningIndex >= 0) {
+    state.latestFigures[lightningIndex] = {
+      id: "lightning_heatmap",
+      figure: JSON.parse(JSON.stringify(figure)),
+    };
+  }
+  host.dataset.figureId = "lightning_heatmap";
+
+  applyMaximizedChartState();
+  applyChartShellHeights(section);
+  await awaitLayoutSettle();
+
+  const targetChartHeight = Number.parseFloat(host.style.height) || getChartHeight(section);
+  const isMaximized = Number.isInteger(state.maximizedChartIndex)
+    && state.maximizedChartIndex === lightningIndex;
+  applyTopoMapPanelLayout(figure, "lightning_heatmap", { chartHeight: targetChartHeight });
+  await prepareChartTerrainBackground(figure, icao, "lightning_heatmap");
+
+  figure.layout = figure.layout || {};
+  figure.layout.legend = figure.layout.legend || {};
+  figure.layout.showlegend = false;
+  const hourlyScale = shouldUseHourlyLightningHeatmap(section)
+    ? ensureLightningHourlyScale(icao, season)
+    : null;
+  const scale = applyLightningHeatmapStyle(figure, {
+    icao,
+    season,
+    fixedScale: hourlyScale,
+  });
+  if (state.lhMode === "summary" && supportsLightningHeatmapHourly(icao) && scale) {
+    state.lightningHeatmapScaleRef = { ...scale };
+  }
+  figure.layout.height = targetChartHeight;
+  if (isMaximized) {
+    figure.layout.autosize = true;
+    delete figure.layout.width;
+  } else {
+    delete figure.layout.width;
+  }
+  applyChartLegendVisibilityToFigure(figure, "lightning_heatmap");
+
+  const lockHourly = shouldUseHourlyLightningHeatmap(section);
+  await Plotly.react(host, figure.data || [], figure.layout || {}, {
+    displayModeBar: false,
+    responsive: !lockHourly,
+  });
+  await relayoutTopoMapPanel(host);
+  await scheduleHostResize(host, { recalibrateFrame: true });
+
+  if (lockHourly) {
+    if (isMaximized) {
+      await refreshMaximizedChartLayout(host);
+    } else {
+      await enterLightningHourlyOverlayCurrent(host);
+    }
+  }
+
+  const legend = chartUi[lightningIndex]?.legend;
+  if (legend) {
+    renderExternalLegend(host, legend, figure, section, "lightning_heatmap");
+  }
+  return true;
 }
 
 function shouldSkipLightningHourlyTopoRelayout(host) {
@@ -4045,16 +4235,14 @@ async function ensureLightningHourlyFramesLoaded(icao = els.icao.value) {
 
   const url = liteLightningHourlyUrl(code);
   const needsFetch = !liteCache.has(url);
-  if (needsFetch) {
-    showLoading("Preparing lightning animation...");
-  }
+  const ownedLoading = needsFetch
+    ? announceNestedLoading("Preparing lightning animation...")
+    : false;
   try {
     lightningPlayback.liteHourlyMap = await fetchJsonCached(url);
     lightningPlayback.liteHourlyIcao = code;
   } finally {
-    if (needsFetch) {
-      hideLoading();
-    }
+    releaseNestedLoading(ownedLoading);
   }
 }
 
