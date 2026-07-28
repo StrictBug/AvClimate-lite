@@ -983,6 +983,9 @@ function ensureChartShell(host) {
       runViewTransition({
         message: nextMaximized === null ? "Restoring chart grid..." : "Expanding chart...",
         prepare: () => {
+          // Apply maximize intent before GAF figure rebuild so airport overlays
+          // (national fleet vs selected-only) match the target layout.
+          state.maximizedChartIndex = nextMaximized;
           if (state.lhMode === "hourly" || isLightningGafZoom()) {
             resetLightningHourlyLayoutState();
           }
@@ -3748,7 +3751,7 @@ function lightningRingTracesForCurrentView(baseHost = null) {
 // Two traces so both markers and labels get reliable colors (Plotly does not
 // reliably support per-point textfont.color on a single scatter). Selected is
 // drawn last so it sits on top if labels overlap.
-function lightningGafAirportOverlay(bbox, selectedIcao = "") {
+function lightningGafAirportOverlay(bbox, selectedIcao = "", { selectedOnly = false } = {}) {
   const airports = lightningPlayback.gafAreas?.airports;
   if (!airports || typeof airports !== "object" || !Array.isArray(bbox) || bbox.length !== 4) {
     return [];
@@ -3767,6 +3770,11 @@ function lightningGafAirportOverlay(bbox, selectedIcao = "") {
       return;
     }
     const code = String(icao || "").trim().toUpperCase();
+    // National grid view: only the selected aerodrome. Maximized national still
+    // shows the full fleet (selectedOnly is false in that case).
+    if (selectedOnly && code !== selected) {
+      return;
+    }
     const bucket = code === selected ? selectedPts : others;
     bucket.lons.push(lon);
     bucket.lats.push(lat);
@@ -3789,6 +3797,13 @@ function lightningGafAirportOverlay(bbox, selectedIcao = "") {
     }));
   }
   return traces;
+}
+
+function isLightningHeatmapMaximized() {
+  const lightningIndex = state.latestFigures.findIndex((item) => item.id === "lightning_heatmap");
+  return Number.isInteger(state.maximizedChartIndex)
+    && lightningIndex >= 0
+    && state.maximizedChartIndex === lightningIndex;
 }
 
 function buildGafLightningFigure({ icao, season, hour = null } = {}) {
@@ -3827,7 +3842,10 @@ function buildGafLightningFigure({ icao, season, hour = null } = {}) {
 
   data.push(...lightningGafBoundaryTraces());
   data.push(...buildGafLightningRingTraces(view));
-  data.push(...lightningGafAirportOverlay(view.bbox, icao));
+  data.push(...lightningGafAirportOverlay(view.bbox, icao, {
+    // National: selected-only in the grid; full fleet when that chart is maximized.
+    selectedOnly: view.kind === "region" && !isLightningHeatmapMaximized(),
+  }));
 
   return {
     data,
