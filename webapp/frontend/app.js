@@ -1719,6 +1719,7 @@ function updateChartToolbars(section = state.displayedSection) {
   });
 
   if (!state.latestFigures.length) {
+    updateLightningZoomToggle();
     return;
   }
 
@@ -1726,6 +1727,8 @@ function updateChartToolbars(section = state.displayedSection) {
     fogPanels.forEach((panel) => {
       renderDayTypeToggle(els.chartToolbars[panel.key], panel.key);
     });
+    // Still tear down precipitation-only controls (e.g. Local/Regional/National).
+    renderLightningHeatmapToolbar(section);
     return;
   }
 
@@ -3955,19 +3958,24 @@ async function applyGafLightningHeatmapOverride(data, icao, season) {
 }
 
 function updateLightningZoomToggle() {
+  // Chart cards are reused across tabs. Always hide every zoom toggle first so a
+  // precipitation toggle cannot linger on Overview/Wind/etc. after section change.
+  document.querySelectorAll(".chart-zoom-toggle").forEach((el) => {
+    el.classList.add("hidden");
+  });
+
+  const show = state.displayedSection === "precipitation"
+    && state.latestFigures.some((item) => item.id === "lightning_heatmap");
+  if (!show) {
+    return;
+  }
+
   const ui = getLightningHeatmapChartUi();
   if (!ui?.card) {
     return;
   }
+
   let toggle = ui.card.querySelector(".chart-zoom-toggle");
-  const show = state.displayedSection === "precipitation"
-    && state.latestFigures.some((item) => item.id === "lightning_heatmap");
-  if (!show) {
-    if (toggle) {
-      toggle.classList.add("hidden");
-    }
-    return;
-  }
   if (!toggle) {
     toggle = document.createElement("div");
     toggle.className = "chart-zoom-toggle segmented-toggle";
