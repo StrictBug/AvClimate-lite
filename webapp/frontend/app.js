@@ -2386,6 +2386,8 @@ function captureLightningHeatmapLayoutSnapshot(host, baseLayout = null) {
   }
   const snapshot = JSON.parse(JSON.stringify(source));
   snapshot.autosize = false;
+  // Never rehydrate Local ring circle shapes from a layout pin.
+  snapshot.shapes = filterNonLightningRingShapes(snapshot.shapes);
   const width = Math.round(host.offsetWidth || host.clientWidth || 0);
   const height = Math.round(host.offsetHeight || host.clientHeight || 0);
   if (width > 0) {
@@ -2412,6 +2414,7 @@ function captureLightningHeatmapSummaryLayoutRef(host) {
     return;
   }
   const snapshot = JSON.parse(JSON.stringify(host.layout));
+  snapshot.shapes = filterNonLightningRingShapes(snapshot.shapes);
   const width = Math.round(host.offsetWidth || host.clientWidth || 0);
   const height = Math.round(host.offsetHeight || host.clientHeight || 0);
   if (width > 0) {
@@ -2591,6 +2594,100 @@ function buildLightningOverlayLayout(baseHost) {
 // GAF/regional hourly uses a sealed single Plotly host (no overlay div). After the
 // container CSS settles, pin width/height/margins/domains so z-only restyles cannot
 // re-solve scaleanchor or nudge the basemap image.
+//
+// IMPORTANT: Plotly layout.width (autosize:false) writes an inline host style.width,
+// so host.offsetWidth echoes the pin — not the flex CSS box. Always derive the
+// target from the shell (minus legend), and clear stale pins before resealing.
+function measureGafLightningSealTarget(host) {
+  const shell = host.closest?.(".chart-shell") || host.parentElement;
+  const legend = shell?.querySelector?.(".chart-legend");
+  const legendVisible = Boolean(
+    legend
+    && !legend.classList.contains("hidden")
+    && !shell?.classList?.contains("no-legend"),
+  );
+  const legendWidth = legendVisible
+    ? Math.round((legend.offsetWidth || 0) + 10) // include flex gap
+    : 0;
+  const shellWidth = Math.round(shell?.clientWidth || host.parentElement?.clientWidth || 0);
+  const targetWidth = Math.max(0, shellWidth - legendWidth);
+  const styleHeight = Number.parseFloat(host.style.height) || 0;
+  const targetHeight = Math.round(
+    styleHeight
+    || shell?.clientHeight
+    || getChartHeight(state.displayedSection)
+    || 0,
+  );
+  const hostWidth = Math.round(host.offsetWidth || host.clientWidth || 0);
+  const hostHeight = Math.round(host.offsetHeight || host.clientHeight || 0);
+  const pinnedWidth = Math.round(Number(host.layout?.width) || 0);
+  const pinnedHeight = Math.round(Number(host.layout?.height) || 0);
+  return {
+    targetWidth,
+    targetHeight,
+    hostWidth,
+    hostHeight,
+    pinnedWidth,
+    pinnedHeight,
+  };
+}
+
+async function clearGafLightningFixedSize(host) {
+  if (!host) {
+    return;
+  }
+  try {
+    await Plotly.relayout(host, { width: null, height: null, autosize: true });
+  } catch (error) {
+    // ignore — host may be mid-teardown
+  }
+  // Plotly may leave an inline width that keeps the chart shrunk inside the shell.
+  host.style.width = "";
+  try {
+    await Plotly.Plots.resize(host);
+  } catch (error) {
+    // ignore
+  }
+}
+
+async function measureSettledGafLightningSealBox(host, { generation = null, attempts = 4 } = {}) {
+  const gen = generation == null ? lightningPlayback.layoutGeneration : generation;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (gen !== lightningPlayback.layoutGeneration) {
+      return null;
+    }
+    const measured = measureGafLightningSealTarget(host);
+    if (measured.targetWidth > 0 && measured.targetHeight > 0) {
+      const staleWidth = (
+        (measured.pinnedWidth > 0 && measured.pinnedWidth < measured.targetWidth * 0.92)
+        || (measured.hostWidth > 0 && measured.hostWidth < measured.targetWidth * 0.92)
+      );
+      const staleHeight = (
+        (measured.pinnedHeight > 0 && measured.pinnedHeight < measured.targetHeight * 0.92)
+        || (measured.hostHeight > 0 && measured.hostHeight < measured.targetHeight * 0.92)
+      );
+      if (staleWidth || staleHeight) {
+        await clearGafLightningFixedSize(host);
+        await awaitLayoutSettle();
+        continue;
+      }
+      return { width: measured.targetWidth, height: measured.targetHeight };
+    }
+    await awaitLayoutSettle();
+  }
+  if (gen !== lightningPlayback.layoutGeneration) {
+    return null;
+  }
+  // Last resort: clear any pin and use the shell-derived target if known.
+  await clearGafLightningFixedSize(host);
+  await awaitLayoutSettle();
+  const fallback = measureGafLightningSealTarget(host);
+  if (fallback.targetWidth > 0 && fallback.targetHeight > 0) {
+    return { width: fallback.targetWidth, height: fallback.targetHeight };
+  }
+  return null;
+}
+
 async function sealGafLightningHost(host, { generation = null } = {}) {
   const gen = generation == null ? lightningPlayback.layoutGeneration : generation;
   if (!host || !isGafLightningFigure({ layout: host.layout })) {
@@ -2606,11 +2703,11 @@ async function sealGafLightningHost(host, { generation = null } = {}) {
     return false;
   }
 
-  const width = Math.round(host.offsetWidth || host.clientWidth || 0);
-  const height = Math.round(host.offsetHeight || host.clientHeight || 0);
-  if (width <= 0 || height <= 0) {
+  const settled = await measureSettledGafLightningSealBox(host, { generation: gen, attempts: 4 });
+  if (!settled || gen !== lightningPlayback.layoutGeneration) {
     return false;
   }
+  const { width, height } = settled;
 
   await Plotly.relayout(host, { width, height, autosize: false });
   await awaitLayoutSettle();
@@ -2618,19 +2715,22 @@ async function sealGafLightningHost(host, { generation = null } = {}) {
     return false;
   }
 
-  const full = host._fullLayout || {};
-  const size = full._size || {};
-  const layoutMargin = host.layout?.margin || {};
+  // Pin canonical topo domains/margins — do NOT copy letterboxed _fullLayout
+  // domains from a previous small pin (that is what freezes a tiny map).
+  const domainX = TOPO_MAP_PANEL.plotDomain.x.slice();
+  const domainY = TOPO_MAP_PANEL.plotDomain.y.slice();
   const meta = host.layout?.meta || {};
   const bbox = Array.isArray(meta.gafBbox) && meta.gafBbox.length === 4 ? meta.gafBbox : null;
   const patch = {
     width,
     height,
     autosize: false,
-    "margin.l": Math.round(Number.isFinite(size.l) ? size.l : (layoutMargin.l || 0)),
-    "margin.r": Math.round(Number.isFinite(size.r) ? size.r : (layoutMargin.r || 0)),
-    "margin.t": Math.round(Number.isFinite(size.t) ? size.t : (layoutMargin.t || 0)),
-    "margin.b": Math.round(Number.isFinite(size.b) ? size.b : (layoutMargin.b || 0)),
+    "margin.l": TOPO_MAP_PANEL.margin.l,
+    "margin.r": LIGHTNING_HEATMAP_MARGIN_R,
+    "margin.t": TOPO_MAP_PANEL.margin.t,
+    "margin.b": TOPO_MAP_PANEL.margin.b,
+    "xaxis.domain": domainX,
+    "yaxis.domain": domainY,
     "xaxis.autorange": false,
     "yaxis.autorange": false,
     "xaxis.scaleanchor": "y",
@@ -2641,12 +2741,6 @@ async function sealGafLightningHost(host, { generation = null } = {}) {
     "xaxis.automargin": false,
     "yaxis.automargin": false,
   };
-  if (Array.isArray(full.xaxis?.domain)) {
-    patch["xaxis.domain"] = full.xaxis.domain.slice();
-  }
-  if (Array.isArray(full.yaxis?.domain)) {
-    patch["yaxis.domain"] = full.yaxis.domain.slice();
-  }
   if (bbox) {
     const [latMin, latMax, lonMin, lonMax] = bbox;
     patch["xaxis.range"] = [lonMin, lonMax];
@@ -2662,6 +2756,7 @@ async function sealGafLightningHost(host, { generation = null } = {}) {
       patch["images[0].layer"] = "below";
     }
   } else {
+    const full = host._fullLayout || {};
     if (Array.isArray(full.xaxis?.range)) {
       patch["xaxis.range"] = full.xaxis.range.slice();
     }
@@ -2703,12 +2798,19 @@ async function sealGafLightningHost(host, { generation = null } = {}) {
 async function rebuildAndSealGafLightningHost(host, section = state.displayedSection) {
   const gen = bumpLightningLayoutGeneration();
   teardownLightningOverlay();
+  // Drop sticky pins from a previous maximize/grid size before measuring anew.
+  lightningPlayback.layoutPinned = false;
+  lightningPlayback.pinnedWidth = null;
+  lightningPlayback.pinnedHeight = null;
+  lightningPlayback.pinnedMaximized = null;
   if (!host) {
     return false;
   }
 
   applyMaximizedChartState();
   applyChartShellHeights(section);
+  await clearGafLightningFixedSize(host);
+  await awaitLayoutSettle();
   await awaitLayoutSettle();
   if (gen !== lightningPlayback.layoutGeneration) {
     return false;
@@ -2733,17 +2835,20 @@ async function rebuildAndSealGafLightningHost(host, section = state.displayedSec
     ensureLightningHourlyTwoTraceFigure(figure);
   }
 
-  const width = Math.round(host.offsetWidth || host.clientWidth || 0);
-  const height = Math.round(host.offsetHeight || host.clientHeight || 0);
+  const settled = await measureSettledGafLightningSealBox(host, { generation: gen, attempts: 4 });
+  if (!settled || gen !== lightningPlayback.layoutGeneration) {
+    return false;
+  }
+  const { width, height } = settled;
   figure.layout = figure.layout || {};
-  if (width > 0) {
-    figure.layout.width = width;
-  }
-  if (height > 0) {
-    figure.layout.height = height;
-  }
+  figure.layout.width = width;
+  figure.layout.height = height;
   figure.layout.autosize = false;
   applyTopoMapPanelLayout(figure, "lightning_heatmap", { chartHeight: height || undefined });
+  // applyTopoMapPanelLayout deletes width — restore the shell-sized pin.
+  figure.layout.width = width;
+  figure.layout.height = height;
+  figure.layout.autosize = false;
 
   state.lightningHeatmapScaleRef = {
     zmin: Number(figure.layout.meta.lightningZmin) || 0,
@@ -2981,13 +3086,18 @@ async function enterLightningHourlyOverlay(baseHost, zGrid) {
   const z = lightningOverlayZFromGrid(baseHost, zGrid);
   const layout = buildLightningOverlayLayout(baseHost);
   const trace = buildLightningOverlayDataTrace(baseHost, z);
-  // Rings must live on the overlay (above the sealed base). Drop base rings so
-  // the transparent overlay does not show a second pair underneath.
+  // Rings must live on the overlay (above the sealed base). Clear base ring
+  // traces AND lite/backend circle shapes so the transparent overlay does not
+  // stack a second pair underneath (reads as a black outline).
+  await clearLightningRingShapesOnHost(baseHost);
   await deleteLightningRingTracesOnHost(baseHost);
   const rings = buildAerodromeLightningRingTraces();
   overlay.classList.add("is-visible");
   await Plotly.react(overlay, [trace, ...rings], layout, { displayModeBar: false, responsive: false });
   const ctx = getLightningHourlyPinContext(baseHost);
+  if (!ctx.width || !ctx.height) {
+    return;
+  }
   lightningPlayback.overlayActive = true;
   lightningPlayback.pinnedWidth = ctx.width;
   lightningPlayback.pinnedHeight = ctx.height;
@@ -3689,9 +3799,32 @@ function stripLightningRingArtifacts(figure) {
   }
   figure.data = (figure.data || []).filter((trace) => trace?.name !== LIGHTNING_RING_TRACE_NAME);
   figure.layout = figure.layout || {};
-  figure.layout.shapes = (figure.layout.shapes || []).filter(
-    (shape) => !(shape?.type === "circle" && shape?.xref === "x" && shape?.yref === "y"),
-  );
+  figure.layout.shapes = filterNonLightningRingShapes(figure.layout.shapes);
+}
+
+function isLightningRingCircleShape(shape) {
+  return shape?.type === "circle" && shape?.xref === "x" && shape?.yref === "y";
+}
+
+function filterNonLightningRingShapes(shapes) {
+  return (shapes || []).filter((shape) => !isLightningRingCircleShape(shape));
+}
+
+// Live-host counterpart to stripLightningRingArtifacts: drop backend/lite circle
+// shapes so Local rings are scatter traces only (avoids stacked white strokes
+// that read as a dark outline).
+async function clearLightningRingShapesOnHost(host) {
+  if (!host?.layout) {
+    return;
+  }
+  const current = host.layout.shapes || [];
+  if (!current.some(isLightningRingCircleShape)) {
+    // Keep in-memory layout consistent even when Plotly has no shapes to clear.
+    host.layout.shapes = filterNonLightningRingShapes(current);
+    return;
+  }
+  const next = filterNonLightningRingShapes(current);
+  await Plotly.relayout(host, { shapes: next });
 }
 
 function lightningRingTraceIndices(hostOrFigure) {
@@ -4168,6 +4301,8 @@ async function replaceLocalLightningHeatmapHost(host, lightningItem, icao, seaso
     displayModeBar: false,
     responsive: !lockHourly,
   });
+  await clearLightningRingShapesOnHost(host);
+  await ensureLightningRingTracesOnHost(host);
   await relayoutTopoMapPanel(host);
   await scheduleHostResize(host, { recalibrateFrame: true });
 
@@ -4412,23 +4547,35 @@ async function ensureLightningRingTracesOnHost(host) {
   if (!host?.data) {
     return;
   }
+  // Always clear lite/backend circle shapes so Local rings are traces-only.
+  await clearLightningRingShapesOnHost(host);
+
+  const expected = lightningRingTracesForCurrentView(host);
+  if (!expected.length) {
+    await deleteLightningRingTracesOnHost(host);
+    return;
+  }
+
   const existing = (host.data || []).filter((trace) => trace?.name === LIGHTNING_RING_TRACE_NAME);
-  if (existing.length) {
+  const styleOk = existing.length === expected.length
+    && existing.every((trace) => {
+      const color = String(trace?.line?.color || "");
+      return color.startsWith("rgba(255,255,255") || color === "#ffffff" || color === "white";
+    });
+  if (styleOk) {
     return;
   }
-  const rings = lightningRingTracesForCurrentView(host);
-  if (!rings.length) {
-    return;
-  }
+
+  await deleteLightningRingTracesOnHost(host);
   // Keep GAF airport markers/labels above the rings.
   const insertAt = (host.data || []).findIndex((trace) => {
     const name = String(trace?.name || "");
     return name === "__gaf_boundaries" || name.startsWith("__gaf_airports");
   });
   if (insertAt >= 0) {
-    await Plotly.addTraces(host, rings, insertAt);
+    await Plotly.addTraces(host, expected, insertAt);
   } else {
-    await Plotly.addTraces(host, rings);
+    await Plotly.addTraces(host, expected);
   }
 }
 
@@ -9213,8 +9360,13 @@ async function renderChartsToDom(figures, section = state.displayedSection, onPr
       delete figure.layout.width;
     }
     if (item.id === "lightning_heatmap" && isGafLightningFigure(figure)) {
-      const hostWidth = Math.round(host.offsetWidth || host.clientWidth || 0);
-      const hostHeight = Math.round(host.offsetHeight || host.clientHeight || targetChartHeight || 0);
+      const target = measureGafLightningSealTarget(host);
+      const hostWidth = target.targetWidth > 0
+        ? target.targetWidth
+        : Math.round(host.offsetWidth || host.clientWidth || 0);
+      const hostHeight = target.targetHeight > 0
+        ? target.targetHeight
+        : Math.round(host.offsetHeight || host.clientHeight || targetChartHeight || 0);
       if (hostWidth > 0) {
         figure.layout.width = hostWidth;
       }
@@ -9345,7 +9497,13 @@ async function renderChartsToDom(figures, section = state.displayedSection, onPr
 
   const gafLightningIndex = visibleFigures.findIndex((item) => item.id === "lightning_heatmap");
   if (gafLightningIndex >= 0 && isLightningGafZoom()) {
-    await sealGafLightningHost(els.charts[gafLightningIndex]);
+    await awaitLayoutSettle();
+    let sealed = await sealGafLightningHost(els.charts[gafLightningIndex]);
+    if (!sealed) {
+      // Mid-reflow abort — one more settle pass before leaving unsealed.
+      await awaitLayoutSettle();
+      sealed = await sealGafLightningHost(els.charts[gafLightningIndex]);
+    }
   }
 
   const windRoseIndex = visibleFigures.findIndex((item) => item.id === "wind_rose");
@@ -10859,7 +11017,9 @@ function initializeChartContainerResizeObservers() {
       lastSizes.set(card, { width, height });
       if (host.dataset?.figureId === "lightning_heatmap"
         && (isLightningGafZoom() || isGafLightningFigure({ layout: host.layout }))) {
-        if (lightningPlayback.frameUpdating) {
+        if (lightningPlayback.frameUpdating || isViewTransitionActive()) {
+          // Own seals happen at the end of zoom/maximize/fetch transitions.
+          // Sealing from mid-reflow ResizeObserver pins an undersized map.
           return;
         }
         scheduleGafLightningSeal(host);
