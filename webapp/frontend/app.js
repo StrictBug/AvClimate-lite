@@ -159,12 +159,10 @@ const infoFigureDetails = {
   },
   lightning_heatmap: {
     title: "Lightning Strike Frequency",
-    description: "Lightning heatmap with Local (30 km), Regional (GAF-area), and National zoom levels.",
+    description: "Lightning heatmap with local (30km), regional, and national zoom levels.",
     classification: [
-      { term: "Grid", detail: "48 x 48 binned lightning data (~1.25km grid) within 30km of the origin" },
-      { term: "Local", detail: "Local 30 km heatmap near the aerodrome, with 8 km and 16 km range rings" },
-      { term: "Regional", detail: "0.1° Weatherzone lightning (2008–2024) over the airport GAF area (or offshore pair domain), with 8 km and 16 km range rings" },
-      { term: "National", detail: "0.1° Weatherzone lightning over the full Australia domain" },
+      { term: "Local", detail: "1.25 km gridded lightning frequency" },
+      { term: "Regional / National", detail: "0.1° (~10 km) gridded lightning frequency" },
     ],
   },
   monthly_fog: {
