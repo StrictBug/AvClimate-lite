@@ -32,20 +32,28 @@
       Aviation climate explorer
       <button id="info-btn" class="info-btn" type="button" aria-label="Show data and chart information" title="Data and chart information">i</button>
     </div>
-    <div class="category-row" id="category-row"></div>
+    <div class="category-row" id="category-row">
+      <div class="category-buttons" id="category-buttons"></div>
+      <div class="mobile-control-strip" id="mobile-control-strip">
+        <div class="mobile-selectors" id="mobile-selectors">
+          <select id="mobile-section-select" class="mobile-select" aria-label="Select section"></select>
+          <select id="mobile-chart-select" class="mobile-select" aria-label="Select chart"></select>
+        </div>
+      </div>
+    </div>
   </header>
 
   <main class="page">
-    <section class="controls">
+    <section class="controls" id="controls">
       <label class="control">
         <span>Aerodrome</span>
-        <select id="icao"></select>
+        <select id="icao" aria-label="Aerodrome"></select>
       </label>
 
       <label class="control">
         <span>Season</span>
-        <select id="season">
-          <option value="all" selected>All</option>
+        <select id="season" aria-label="Season">
+          <option value="all" selected>All seasons</option>
           <option value="summer">Summer</option>
           <option value="autumn">Autumn</option>
           <option value="winter">Winter</option>
@@ -57,7 +65,7 @@
 
       <div class="control control-toggle">
         <span>Error bars (SD)</span>
-        <button id="error-bars-toggle" type="button" class="error-bars-toggle" aria-pressed="false">Off</button>
+        <button id="error-bars-toggle" type="button" class="error-bars-toggle" aria-pressed="false" aria-label="Error bars off" title="Error bars off (SD)">Error bars</button>
       </div>
     </section>
 

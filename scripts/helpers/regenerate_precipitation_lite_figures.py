@@ -96,7 +96,7 @@ def build_precipitation_section_payload(icao: str, season: str) -> dict[str, Any
                     "monthly_precip": "Monthly Rain/Thunderstorm Days",
                     "precip_split": "Conditional P(VSBY < threshold | Precipitation) by Direction",
                     "hourly_precip": "Hourly Rain Observations",
-                    "lightning_heatmap": "Lightning Strike Frequency Near Aerodrome",
+                    "lightning_heatmap": "Lightning Strike Frequency",
                 }[figure_id],
             )
         backend.apply_common_layout(fig)

@@ -347,7 +347,9 @@ def main() -> int:
         )
         for script_name in split_scripts:
             script_path = os.path.join(os.path.dirname(__file__), script_name)
-            split_args = [sys.executable, script_path, "--output-dir", args.output_dir]
+            split_args = [sys.executable, script_path, "--source-dir", args.output_dir]
+            if script_name == "split_fog_wind_by_mode.py":
+                split_args = [sys.executable, script_path, "--output-dir", args.output_dir]
             for icao in airports:
                 split_args.extend(["--icao", icao])
             print(f"Running {script_name}...")

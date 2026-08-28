@@ -265,6 +265,7 @@ const state = {
   requestedSection: "overview",
   displayedSection: "overview",
   maximizedChartIndex: null,
+  mobileChartId: null,
   showErrorBars: false,
   fogModes: {
     monthly: "all",
@@ -903,6 +904,12 @@ const LIGHTNING_PLAY_INTERVAL_MS = 300;
 
 const els = {
   categoryRow: document.getElementById("category-row"),
+  categoryButtons: document.getElementById("category-buttons"),
+  mobileControlStrip: document.getElementById("mobile-control-strip"),
+  mobileSectionSelect: document.getElementById("mobile-section-select"),
+  mobileChartSelect: document.getElementById("mobile-chart-select"),
+  page: document.querySelector(".page"),
+  controls: document.getElementById("controls"),
   icao: document.getElementById("icao"),
   season: document.getElementById("season"),
   errorBarsToggle: document.getElementById("error-bars-toggle"),
@@ -1014,7 +1021,11 @@ function ensureChartShell(host) {
         },
       });
     });
-    card.appendChild(maximizeButton);
+  }
+
+  // Keep Maximize anchored to the plot area, not the below-chart toggle strip.
+  if (shell && maximizeButton.parentElement !== shell) {
+    shell.appendChild(maximizeButton);
   }
 
   return { card, shell, legend, maximizeButton };
@@ -1151,7 +1162,7 @@ function renderInfoGraphDetailsTable(figureIds) {
 
   const thead = document.createElement("thead");
   const headerRow = document.createElement("tr");
-  ["Graph", "Description", "Classification method"].forEach((label) => {
+  ["", "Description", "Classification method"].forEach((label) => {
     const th = document.createElement("th");
     th.scope = "col";
     th.textContent = label;
@@ -1173,10 +1184,13 @@ function renderInfoGraphDetailsTable(figureIds) {
     row.appendChild(titleCell);
 
     const descCell = document.createElement("td");
+    descCell.dataset.label = "Description";
     descCell.textContent = detail.description;
     row.appendChild(descCell);
 
-    row.appendChild(renderInfoClassificationCell(detail.classification));
+    const classCell = renderInfoClassificationCell(detail.classification);
+    classCell.dataset.label = "Classification method";
+    row.appendChild(classCell);
     tbody.appendChild(row);
   });
   table.appendChild(tbody);
@@ -1652,9 +1666,15 @@ function applyMaximizedChartState() {
 }
 
 function renderCategories() {
-  els.categoryRow.innerHTML = "";
-  const buttonRow = document.createElement("div");
-  buttonRow.className = "category-buttons";
+  const buttonRow = els.categoryButtons || (() => {
+    const row = document.createElement("div");
+    row.className = "category-buttons";
+    row.id = "category-buttons";
+    els.categoryRow.prepend(row);
+    els.categoryButtons = row;
+    return row;
+  })();
+  buttonRow.innerHTML = "";
   sections.forEach((section) => {
     const btn = document.createElement("button");
     btn.className = `category-btn ${section.key === state.requestedSection ? "active" : ""}`;
@@ -1663,14 +1683,229 @@ function renderCategories() {
       if (state.requestedSection === section.key) {
         return;
       }
-      state.requestedSection = section.key;
-      renderCategories();
-      clearChartAxisLocks();
-      fetchCharts();
+      requestSectionChange(section.key);
     });
     buttonRow.appendChild(btn);
   });
-  els.categoryRow.appendChild(buttonRow);
+  syncMobileSectionSelect();
+}
+
+const MOBILE_VIEWPORT_MQ = "(max-width: 768px)";
+
+function isMobileViewport() {
+  return Boolean(window.matchMedia?.(MOBILE_VIEWPORT_MQ)?.matches);
+}
+
+function sectionFigureOrder(section = state.displayedSection || state.requestedSection) {
+  return infoSectionOverview[section]?.figureOrder || [];
+}
+
+function requestSectionChange(sectionKey) {
+  if (!sectionKey || state.requestedSection === sectionKey) {
+    return;
+  }
+  state.requestedSection = sectionKey;
+  state.mobileChartId = sectionFigureOrder(sectionKey)[0] || null;
+  if (isMobileViewport() && Number.isInteger(state.maximizedChartIndex)) {
+    state.maximizedChartIndex = null;
+  }
+  renderCategories();
+  syncMobileChartSelect(sectionKey);
+  clearChartAxisLocks();
+  fetchCharts();
+}
+
+function syncMobileSectionSelect() {
+  const select = els.mobileSectionSelect;
+  if (!select) {
+    return;
+  }
+  if (!select.options.length) {
+    sections.forEach((section) => {
+      const option = document.createElement("option");
+      option.value = section.key;
+      option.textContent = section.label;
+      select.appendChild(option);
+    });
+  }
+  select.value = state.requestedSection;
+}
+
+function syncMobileChartSelect(section = state.displayedSection || state.requestedSection) {
+  const select = els.mobileChartSelect;
+  if (!select) {
+    return;
+  }
+  const order = sectionFigureOrder(section);
+  const renderedIds = (state.latestFigures || []).map((item) => item.id).filter(Boolean);
+  let next = state.mobileChartId;
+  if (!order.includes(next)) {
+    next = order[0] || null;
+  }
+  if (renderedIds.length && next && !renderedIds.includes(next)) {
+    next = renderedIds.find((id) => order.includes(id)) || renderedIds[0] || null;
+  }
+  state.mobileChartId = next;
+  select.innerHTML = "";
+  order.forEach((figureId) => {
+    const option = document.createElement("option");
+    option.value = figureId;
+    option.textContent = figureDisplayLabel(figureId);
+    select.appendChild(option);
+  });
+  if (next) {
+    select.value = next;
+  }
+}
+
+function applyMobileChartVisibility() {
+  const mobile = isMobileViewport();
+  const chartGrid = document.getElementById("chart-grid");
+  if (chartGrid) {
+    chartGrid.classList.toggle("has-mobile-single-chart", mobile);
+  }
+
+  chartUi.forEach(({ card }, index) => {
+    if (!mobile) {
+      card.classList.remove("is-hidden-for-mobile-chart", "is-mobile-chart-active");
+      return;
+    }
+    const host = els.charts[index];
+    const figureId = host?.dataset?.figureId || state.latestFigures[index]?.id || "";
+    const slotUnused = index >= (state.latestFigures?.length || 0) || card.classList.contains("hidden");
+    const active = !slotUnused && figureId && figureId === state.mobileChartId;
+    card.classList.toggle("is-hidden-for-mobile-chart", !active);
+    card.classList.toggle("is-mobile-chart-active", active);
+  });
+  syncControlsPlacementForViewport();
+  syncLegendPlacementForViewport();
+}
+
+// On desktop, controls live in main before status. On mobile, park them in the
+// header strip below the section/chart dropdowns.
+function syncControlsPlacementForViewport() {
+  const controls = els.controls;
+  const page = els.page;
+  const strip = els.mobileControlStrip;
+  const status = els.status;
+  if (!controls || !page) {
+    return;
+  }
+  if (isMobileViewport()) {
+    if (strip && controls.parentElement !== strip) {
+      strip.appendChild(controls);
+    }
+    return;
+  }
+  if (controls.parentElement !== page) {
+    if (status && status.parentElement === page) {
+      page.insertBefore(controls, status);
+    } else {
+      page.insertBefore(controls, page.firstChild);
+    }
+  }
+}
+
+// On mobile, park the legend between the plot and chart toggles so it can be
+// centered in that band. On desktop, keep it beside the plot inside the shell.
+function syncLegendPlacementForViewport() {
+  const mobile = isMobileViewport();
+  chartUi.forEach(({ card, shell, legend }) => {
+    if (!card || !shell || !legend) {
+      return;
+    }
+    if (mobile) {
+      if (legend.parentElement !== card || legend.previousElementSibling !== shell) {
+        shell.after(legend);
+      }
+      return;
+    }
+    if (legend.parentElement !== shell) {
+      // Keep maximize (if present) after the legend inside the shell.
+      const maximize = shell.querySelector(".chart-maximize-btn");
+      if (maximize) {
+        shell.insertBefore(legend, maximize);
+      } else {
+        shell.appendChild(legend);
+      }
+    }
+  });
+}
+
+function resizeVisibleMobileChart() {
+  if (!isMobileViewport() || !state.mobileChartId) {
+    return;
+  }
+  const index = state.latestFigures.findIndex((item) => item.id === state.mobileChartId);
+  if (index < 0) {
+    return;
+  }
+  const host = els.charts[index];
+  if (!host) {
+    return;
+  }
+  applyChartShellHeights(state.displayedSection);
+  return fitMobileChartAroundLegend(host).then(() => {
+    if (isWindRoseChartHost(host)) {
+      scheduleWindRoseResize(host);
+      return;
+    }
+    if (host.dataset?.figureId === "lightning_heatmap"
+      && (isLightningGafZoom() || isGafLightningFigure({ layout: host.layout }))) {
+      scheduleGafLightningSeal(host);
+      return;
+    }
+    scheduleHostResize(host, { recalibrateFrame: true });
+  });
+}
+
+function attachMobileChromeListeners() {
+  if (attachMobileChromeListeners.initialized) {
+    return;
+  }
+  attachMobileChromeListeners.initialized = true;
+
+  if (els.mobileSectionSelect) {
+    els.mobileSectionSelect.addEventListener("change", () => {
+      requestSectionChange(els.mobileSectionSelect.value);
+    });
+  }
+  if (els.mobileChartSelect) {
+    els.mobileChartSelect.addEventListener("change", () => {
+      state.mobileChartId = els.mobileChartSelect.value || null;
+      applyMobileChartVisibility();
+      resizeVisibleMobileChart();
+    });
+  }
+
+  if (typeof window.matchMedia === "function") {
+    const media = window.matchMedia(MOBILE_VIEWPORT_MQ);
+    const onChange = () => {
+      syncControlsPlacementForViewport();
+      syncLegendPlacementForViewport();
+      if (!isMobileViewport()) {
+        // Leaving mobile: clear single-chart hide classes and restore grid sizing.
+        applyMobileChartVisibility();
+        applyMaximizedChartState();
+        applyChartShellHeights(state.displayedSection);
+        return;
+      }
+      // Entering mobile: drop desktop maximize so one chart fills cleanly.
+      if (Number.isInteger(state.maximizedChartIndex)) {
+        state.maximizedChartIndex = null;
+        applyMaximizedChartState();
+      }
+      syncMobileChartSelect();
+      applyMobileChartVisibility();
+      applyChartShellHeights(state.displayedSection);
+      resizeVisibleMobileChart();
+    };
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", onChange);
+    } else if (typeof media.addListener === "function") {
+      media.addListener(onChange);
+    }
+  }
 }
 
 function renderDayTypeToggle(toolbar, modeKey) {
@@ -2648,6 +2883,212 @@ async function clearGafLightningFixedSize(host) {
   }
 }
 
+// Compute an aspect-correct subplot domain for a lon/lat bbox so the map fills
+// the axis box exactly (no scaleanchor letterboxing). Scatter overlays then
+// clip to the basemap instead of painting into empty gutters.
+function computeGafLightningMapDomains(bbox, plotWidth, plotHeight) {
+  const panel = getTopoMapPanelSpec();
+  const baseX = panel.plotDomain.x;
+  const baseY = panel.plotDomain.y;
+  const [latMin, latMax, lonMin, lonMax] = bbox || [];
+  const dataW = Number(lonMax) - Number(lonMin);
+  const dataH = Number(latMax) - Number(latMin);
+  const panelW = Math.max(1, Number(plotWidth) || 1);
+  const panelH = Math.max(1, Number(plotHeight) || 1);
+  const availX0 = baseX[0];
+  const availX1 = baseX[1];
+  const availY0 = baseY[0];
+  const availY1 = baseY[1];
+  const availW = Math.max(1e-6, availX1 - availX0);
+  const availH = Math.max(1e-6, availY1 - availY0);
+
+  if (!(dataW > 0 && dataH > 0)) {
+    return { x: baseX.slice(), y: baseY.slice() };
+  }
+
+  // Desired domain width/height ratio so pixels match scaleratio:1 lon/lat degrees.
+  const targetDomRatio = (dataW / dataH) * (panelH / panelW);
+  let domW = availW;
+  let domH = availH;
+  if (domW / domH > targetDomRatio) {
+    domW = domH * targetDomRatio;
+  } else {
+    domH = domW / targetDomRatio;
+  }
+  const x0 = (availX0 + availX1 - domW) / 2;
+  const y0 = (availY0 + availY1 - domH) / 2;
+  return {
+    x: [x0, x0 + domW],
+    y: [y0, y0 + domH],
+  };
+}
+
+function pointInGafBbox(lon, lat, bbox) {
+  if (!Array.isArray(bbox) || bbox.length !== 4) {
+    return true;
+  }
+  const [latMin, latMax, lonMin, lonMax] = bbox;
+  return lon >= lonMin && lon <= lonMax && lat >= latMin && lat <= latMax;
+}
+
+// Liang-Barsky clip of a lon/lat segment to [latMin,latMax] x [lonMin,lonMax].
+function clipLonLatSegmentToBbox(x0, y0, x1, y1, bbox) {
+  const [latMin, latMax, lonMin, lonMax] = bbox;
+  let t0 = 0;
+  let t1 = 1;
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const clips = [
+    [-dx, x0 - lonMin],
+    [dx, lonMax - x0],
+    [-dy, y0 - latMin],
+    [dy, latMax - y0],
+  ];
+  for (let i = 0; i < clips.length; i += 1) {
+    const [p, q] = clips[i];
+    if (p === 0) {
+      if (q < 0) {
+        return null;
+      }
+      continue;
+    }
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) {
+        return null;
+      }
+      if (r > t0) {
+        t0 = r;
+      }
+    } else {
+      if (r < t0) {
+        return null;
+      }
+      if (r < t1) {
+        t1 = r;
+      }
+    }
+  }
+  return {
+    x0: x0 + t0 * dx,
+    y0: y0 + t0 * dy,
+    x1: x0 + t1 * dx,
+    y1: y0 + t1 * dy,
+  };
+}
+
+function appendRingClippedToBbox(xs, ys, ring, bbox) {
+  if (!Array.isArray(ring) || ring.length < 2) {
+    return;
+  }
+  const closed = ring.slice();
+  const first = ring[0];
+  const last = ring[ring.length - 1];
+  if (!first || !last || Number(first[0]) !== Number(last[0]) || Number(first[1]) !== Number(last[1])) {
+    closed.push(first);
+  }
+  let open = false;
+  for (let i = 0; i < closed.length - 1; i += 1) {
+    const a = closed[i];
+    const b = closed[i + 1];
+    const clipped = clipLonLatSegmentToBbox(
+      Number(a[0]),
+      Number(a[1]),
+      Number(b[0]),
+      Number(b[1]),
+      bbox,
+    );
+    if (!clipped) {
+      if (open) {
+        xs.push(null);
+        ys.push(null);
+        open = false;
+      }
+      continue;
+    }
+    if (!open) {
+      xs.push(clipped.x0);
+      ys.push(clipped.y0);
+      open = true;
+    } else {
+      // Continuing a polyline: avoid duplicating the shared vertex.
+      const lastX = xs[xs.length - 1];
+      const lastY = ys[ys.length - 1];
+      if (lastX !== clipped.x0 || lastY !== clipped.y0) {
+        xs.push(null, clipped.x0);
+        ys.push(null, clipped.y0);
+      }
+    }
+    xs.push(clipped.x1);
+    ys.push(clipped.y1);
+  }
+  if (open) {
+    xs.push(null);
+    ys.push(null);
+  }
+}
+
+// scaleanchor + constrain:"domain" letterboxes the heatmap/basemap inside the
+// subplot, but scatter overlays still paint into those gutters. Prefer an
+// aspect-correct domain with no scaleanchor; fall back to measuring the
+// constrained axis pixel box (_offset/_length) when needed.
+async function pinGafLightningResolvedDomain(host, bbox = null) {
+  const full = host?._fullLayout || {};
+  const size = full._size || {};
+  const width = Math.round(host?.layout?.width || host?.offsetWidth || 0);
+  const height = Math.round(host?.layout?.height || host?.offsetHeight || 0);
+  const viewBbox = Array.isArray(bbox) && bbox.length === 4
+    ? bbox
+    : (Array.isArray(host?.layout?.meta?.gafBbox) ? host.layout.meta.gafBbox : null);
+
+  let domainX = null;
+  let domainY = null;
+  if (viewBbox && width > 0 && height > 0) {
+    const computed = computeGafLightningMapDomains(viewBbox, width, height);
+    domainX = computed.x;
+    domainY = computed.y;
+  } else {
+    const xFull = full.xaxis || {};
+    const yFull = full.yaxis || {};
+    const w = Number(size.w);
+    const h = Number(size.h);
+    const l = Number(size.l);
+    const t = Number(size.t);
+    if (
+      w > 0 && h > 0
+      && Number.isFinite(xFull._offset) && Number.isFinite(xFull._length)
+      && Number.isFinite(yFull._offset) && Number.isFinite(yFull._length)
+    ) {
+      // Convert constrained axis pixel rect into domain fractions of the margin box.
+      domainX = [
+        (xFull._offset - l) / w,
+        (xFull._offset + xFull._length - l) / w,
+      ];
+      domainY = [
+        1 - ((yFull._offset + yFull._length - t) / h),
+        1 - ((yFull._offset - t) / h),
+      ];
+    }
+  }
+
+  if (!domainX || !domainY || !(domainX[1] > domainX[0]) || !(domainY[1] > domainY[0])) {
+    return false;
+  }
+
+  try {
+    await Plotly.relayout(host, {
+      "xaxis.domain": domainX,
+      "yaxis.domain": domainY,
+      "xaxis.scaleanchor": null,
+      "xaxis.scaleratio": null,
+      "xaxis.constrain": null,
+    });
+  } catch (error) {
+    return false;
+  }
+  return true;
+}
+
 async function measureSettledGafLightningSealBox(host, { generation = null, attempts = 4 } = {}) {
   const gen = generation == null ? lightningPlayback.layoutGeneration : generation;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -2713,27 +3154,31 @@ async function sealGafLightningHost(host, { generation = null } = {}) {
     return false;
   }
 
-  // Pin canonical topo domains/margins — do NOT copy letterboxed _fullLayout
-  // domains from a previous small pin (that is what freezes a tiny map).
-  const domainX = TOPO_MAP_PANEL.plotDomain.x.slice();
-  const domainY = TOPO_MAP_PANEL.plotDomain.y.slice();
+  // Prefer an aspect-correct domain with no scaleanchor letterboxing so GAF
+  // boundary / ICAO scatter overlays cannot paint into empty gutters.
+  const panel = getTopoMapPanelSpec();
+  const domainX = panel.plotDomain.x.slice();
+  const domainY = panel.plotDomain.y.slice();
   const meta = host.layout?.meta || {};
   const bbox = Array.isArray(meta.gafBbox) && meta.gafBbox.length === 4 ? meta.gafBbox : null;
+  const mapDomains = bbox
+    ? computeGafLightningMapDomains(bbox, width, height)
+    : { x: domainX, y: domainY };
   const patch = {
     width,
     height,
     autosize: false,
-    "margin.l": TOPO_MAP_PANEL.margin.l,
-    "margin.r": LIGHTNING_HEATMAP_MARGIN_R,
-    "margin.t": TOPO_MAP_PANEL.margin.t,
-    "margin.b": TOPO_MAP_PANEL.margin.b,
-    "xaxis.domain": domainX,
-    "yaxis.domain": domainY,
+    "margin.l": panel.margin.l,
+    "margin.r": getLightningHeatmapMarginR(),
+    "margin.t": panel.margin.t,
+    "margin.b": getLightningHeatmapMarginB(panel.margin.b),
+    "xaxis.domain": mapDomains.x,
+    "yaxis.domain": mapDomains.y,
     "xaxis.autorange": false,
     "yaxis.autorange": false,
-    "xaxis.scaleanchor": "y",
-    "xaxis.scaleratio": 1,
-    "xaxis.constrain": "domain",
+    "xaxis.scaleanchor": null,
+    "xaxis.scaleratio": null,
+    "xaxis.constrain": null,
     "xaxis.fixedrange": true,
     "yaxis.fixedrange": true,
     "xaxis.automargin": false,
@@ -2764,6 +3209,13 @@ async function sealGafLightningHost(host, { generation = null } = {}) {
   }
 
   await Plotly.relayout(host, patch);
+  await awaitLayoutSettle();
+  if (gen !== lightningPlayback.layoutGeneration) {
+    return false;
+  }
+
+  // Keep domains aspect-correct (no letterbox) after the main seal patch.
+  await pinGafLightningResolvedDomain(host, bbox);
   await awaitLayoutSettle();
   if (gen !== lightningPlayback.layoutGeneration) {
     return false;
@@ -2842,11 +3294,32 @@ async function rebuildAndSealGafLightningHost(host, section = state.displayedSec
   figure.layout.width = width;
   figure.layout.height = height;
   figure.layout.autosize = false;
-  applyTopoMapPanelLayout(figure, "lightning_heatmap", { chartHeight: height || undefined });
+  applyTopoMapPanelLayout(figure, "lightning_heatmap", {
+    chartHeight: height || undefined,
+    plotWidth: width || undefined,
+  });
   // applyTopoMapPanelLayout deletes width — restore the shell-sized pin.
   figure.layout.width = width;
   figure.layout.height = height;
   figure.layout.autosize = false;
+  // Re-assert aspect domains after width restore (layout helper may have used defaults).
+  if (Array.isArray(figure.layout.meta?.gafBbox)) {
+    const mapDomains = computeGafLightningMapDomains(figure.layout.meta.gafBbox, width, height);
+    figure.layout.xaxis = {
+      ...(figure.layout.xaxis || {}),
+      domain: mapDomains.x,
+      scaleanchor: undefined,
+      scaleratio: undefined,
+      constrain: undefined,
+    };
+    figure.layout.yaxis = {
+      ...(figure.layout.yaxis || {}),
+      domain: mapDomains.y,
+    };
+    delete figure.layout.xaxis.scaleanchor;
+    delete figure.layout.xaxis.scaleratio;
+    delete figure.layout.xaxis.constrain;
+  }
 
   state.lightningHeatmapScaleRef = {
     zmin: Number(figure.layout.meta.lightningZmin) || 0,
@@ -3670,16 +4143,21 @@ function ensureLightningGafHourlyScale(icao, season) {
   return state.lightningHeatmapHourlyScaleRef;
 }
 
-function lightningGafBoundaryTraces(areasPayload = lightningPlayback.gafAreas) {
+function lightningGafBoundaryTraces(areasPayload = lightningPlayback.gafAreas, bbox = null) {
   const areas = areasPayload?.areas;
   if (!areas || typeof areas !== "object") {
     return [];
   }
   const xs = [];
   const ys = [];
+  const clipBbox = Array.isArray(bbox) && bbox.length === 4 ? bbox : null;
   Object.values(areas).forEach((area) => {
     (area?.rings || []).forEach((ring) => {
       if (!Array.isArray(ring) || ring.length < 3) {
+        return;
+      }
+      if (clipBbox) {
+        appendRingClippedToBbox(xs, ys, ring, clipBbox);
         return;
       }
       ring.forEach((pt) => {
@@ -3974,35 +4452,49 @@ function buildGafLightningFigure({ icao, season, hour = null } = {}) {
     hovertemplate: "Lon: %{x:.2f}°<br>Lat: %{y:.2f}°<br>Count: %{z}<extra></extra>",
   }];
 
-  data.push(...lightningGafBoundaryTraces());
+  data.push(...lightningGafBoundaryTraces(lightningPlayback.gafAreas, view.bbox));
   data.push(...buildGafLightningRingTraces(view));
   data.push(...lightningGafAirportOverlay(view.bbox, icao, {
     // National: selected-only in the grid; full fleet when that chart is maximized.
     selectedOnly: view.kind === "region" && !isLightningHeatmapMaximized(),
   }));
 
-  return {
-    data,
-    layout: {
-      title: {
+  const mapDomains = computeGafLightningMapDomains(
+    view.bbox,
+    // Reasonable first-paint defaults; seal replaces these with shell-measured size.
+    360,
+    360,
+  );
+  const panel = getTopoMapPanelSpec();
+  const titleLayout = isMobileViewport()
+    ? { text: "" }
+    : {
         text: view.title,
         font: { size: 14 },
         x: 0.01,
         xanchor: "left",
         y: 0.98,
         yanchor: "top",
-      },
+      };
+
+  return {
+    data,
+    layout: {
+      title: titleLayout,
       font: { color: "#333333", family: "Source Sans 3, Open Sans, Arial, sans-serif" },
       paper_bgcolor: "rgba(0,0,0,0)",
       plot_bgcolor: "rgba(0,0,0,0)",
-      margin: { ...TOPO_MAP_PANEL.margin, r: LIGHTNING_HEATMAP_MARGIN_R },
+      margin: {
+        ...panel.margin,
+        r: getLightningHeatmapMarginR(),
+        b: getLightningHeatmapMarginB(panel.margin.b),
+      },
       xaxis: {
         title: { text: "" },
         range: [lonMin, lonMax],
-        scaleanchor: "y",
-        scaleratio: 1,
-        constrain: "domain",
+        domain: mapDomains.x,
         autorange: false,
+        fixedrange: true,
         showgrid: false,
         zeroline: false,
         showline: false,
@@ -4015,7 +4507,9 @@ function buildGafLightningFigure({ icao, season, hour = null } = {}) {
       yaxis: {
         title: { text: "" },
         range: [latMin, latMax],
+        domain: mapDomains.y,
         autorange: false,
+        fixedrange: true,
         showgrid: false,
         zeroline: false,
         showline: false,
@@ -4124,8 +4618,9 @@ function updateLightningZoomToggle() {
       });
       toggle.appendChild(button);
     });
-    ui.card.appendChild(toggle);
   }
+  // Local/Regional/National: absolute on desktop, below plot on mobile (CSS).
+  ui.card.appendChild(toggle);
   toggle.classList.remove("hidden");
   const activeZoom = LIGHTNING_ZOOM_OPTIONS.some((option) => option.key === state.lhZoom)
     ? state.lhZoom
@@ -4440,6 +4935,7 @@ function lightningHeatmapRestylePatch(z, scale = {}) {
     zauto: [false],
     showscale: [true],
     colorscale: [LIGHTNING_HEATMAP_COLORSCALE],
+    "colorbar.orientation": [colorbar.orientation || "v"],
     "colorbar.title": [colorbar.title],
     "colorbar.x": [colorbar.x],
     "colorbar.xanchor": [colorbar.xanchor],
@@ -5119,7 +5615,7 @@ function clearChart(index) {
   shell.classList.add("no-legend");
   shell.classList.remove("is-wind-rose-shell", "is-scatter-wind-dewpt-shell");
   card.classList.add("hidden");
-  card.classList.remove("is-maximized", "is-hidden-for-maximized");
+  card.classList.remove("is-maximized", "is-hidden-for-maximized", "is-hidden-for-mobile-chart", "is-mobile-chart-active");
   maximizeButton.classList.add("hidden");
 }
 
@@ -8166,9 +8662,11 @@ function renderErrorBarsToggle() {
     return;
   }
   const enabled = state.showErrorBars;
-  button.textContent = enabled ? "On" : "Off";
+  button.textContent = "Error bars";
   button.classList.toggle("is-active", enabled);
   button.setAttribute("aria-pressed", enabled ? "true" : "false");
+  button.setAttribute("aria-label", enabled ? "Error bars on" : "Error bars off");
+  button.title = enabled ? "Error bars on (SD)" : "Error bars off (SD)";
 }
 
 function computeAxisBounds(figure, axisName = "y") {
@@ -9000,17 +9498,21 @@ function renderExternalLegend(host, legendHost, figure, section = state.displaye
 
   if (!items.length) {
     legendHost.classList.add("hidden");
-    legendHost.parentElement.classList.add("no-legend");
+    host.closest(".chart-shell")?.classList.add("no-legend");
+    legendHost.parentElement?.classList.add("no-legend");
     return;
   }
 
-  legendHost.parentElement.classList.remove("no-legend");
+  host.closest(".chart-shell")?.classList.remove("no-legend");
+  legendHost.parentElement?.classList.remove("no-legend");
   legendHost.classList.remove("hidden");
 
   items.forEach((item) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "chart-legend-item";
+    button.title = item.label;
+    button.setAttribute("aria-label", item.label);
 
     const swatch = document.createElement("span");
     swatch.className = "chart-legend-swatch";
@@ -9048,6 +9550,18 @@ function renderExternalLegend(host, legendHost, figure, section = state.displaye
           captureChartLegendVisibilityFromHost(host, figureId);
         }
         refreshLegendState(host, legendHost, items, groupclick);
+        fitMobileChartAroundLegend(host).then(() => {
+          if (figureId === "wind_rose") {
+            scheduleWindRoseResize(host);
+            return;
+          }
+          if (host.dataset?.figureId === "lightning_heatmap"
+            && (isLightningGafZoom() || isGafLightningFigure({ layout: host.layout }))) {
+            scheduleGafLightningSeal(host);
+            return;
+          }
+          scheduleHostResize(host, { recalibrateFrame: true });
+        });
       });
     });
 
@@ -9061,15 +9575,32 @@ function getChartHeight(section) {
   const isWindSection = section === "wind";
   const isExpandedSection = isWindSection;
 
-  const headerHeight = document.querySelector(".app-header")?.offsetHeight ?? 0;
-  const controlsHeight = document.querySelector(".controls")?.offsetHeight ?? 0;
+  const headerEl = document.querySelector(".app-header");
+  const controlsEl = document.querySelector(".controls");
+  const headerHeight = headerEl?.offsetHeight ?? 0;
+  // Controls live inside the header strip; don't subtract them twice.
+  const controlsInsideHeader = Boolean(headerEl && controlsEl && headerEl.contains(controlsEl));
+  const controlsHeight = controlsInsideHeader ? 0 : (controlsEl?.offsetHeight ?? 0);
   const statusHeight = els.status.offsetHeight ?? 0;
-  const metricsHeight = els.metrics.offsetHeight ?? 0;
+  const metricsEl = els.metrics;
+  const metricsVisible = Boolean(
+    metricsEl
+    && !metricsEl.classList.contains("hidden")
+    && metricsEl.offsetParent !== null
+    && metricsEl.childElementCount > 0,
+  );
+  const metricsHeight = metricsVisible ? (metricsEl.offsetHeight ?? 0) : 0;
   const viewportHeight = window.innerHeight;
   
   // Reserve room for page padding, the 2-row grid gap, and Plotly card chrome.
   const fixedChrome = 40;
   const available = Math.max(0, viewportHeight - headerHeight - controlsHeight - statusHeight - metricsHeight - fixedChrome);
+
+  // Mobile single-chart: this is the max plot height before subtracting
+  // the below-plot legend / toggles (see applyChartShellHeights).
+  if (isMobileViewport()) {
+    return Math.max(160, Math.min(1100, available - 4));
+  }
 
   if (isExpandedSection) {
     // For expanded sections, we use more of the available viewport height, up to a max
@@ -9202,20 +9733,63 @@ async function refreshMaximizedChartLayout(host) {
   await scheduleHostResize(host, { recalibrateFrame: true });
 }
 
+function measureMobileBelowChartChrome(ui) {
+  if (!ui?.card) {
+    return 0;
+  }
+  const legend = ui.legend;
+  const legendH = legend && !legend.classList.contains("hidden") ? (legend.offsetHeight || 0) : 0;
+  const toolbar = ui.card.querySelector(".chart-card-toolbar");
+  const toolbarH = toolbar && !toolbar.classList.contains("hidden") ? (toolbar.offsetHeight || 0) : 0;
+  const zoom = ui.card.querySelector(".chart-zoom-toggle");
+  const zoomH = zoom && !zoom.classList.contains("hidden") ? (zoom.offsetHeight || 0) : 0;
+  const gap = (legendH ? 12 : 0) + ((toolbarH || zoomH) ? 8 : 0);
+  return legendH + toolbarH + zoomH + gap;
+}
+
 function applyChartShellHeights(section = state.displayedSection) {
   const chartHeight = getChartHeight(section);
   const visibleCardCount = state.latestFigures.length ? Math.min(state.latestFigures.length, els.charts.length) : els.charts.length;
   const expandedRows = visibleCardCount > 2 ? 2 : 1;
   const expandedHeight = state.maximizedChartIndex === null ? chartHeight : (chartHeight * expandedRows) + (8 * Math.max(0, expandedRows - 1));
+  const mobile = isMobileViewport();
 
   for (let i = 0; i < els.charts.length; i += 1) {
     const isMaximized = state.maximizedChartIndex === i;
-    const targetHeight = isMaximized ? expandedHeight : chartHeight;
+    let targetHeight = isMaximized ? expandedHeight : chartHeight;
+    if (mobile) {
+      chartUi[i].card.style.minHeight = "";
+      targetHeight = Math.max(160, targetHeight - measureMobileBelowChartChrome(chartUi[i]));
+    } else {
+      chartUi[i].card.style.minHeight = `${targetHeight + 10}px`;
+    }
     els.charts[i].style.height = `${targetHeight}px`;
-    chartUi[i].card.style.minHeight = `${targetHeight + 10}px`;
   }
 
   return chartHeight;
+}
+
+function fitMobileChartAroundLegend(host) {
+  if (!isMobileViewport() || !host) {
+    return Promise.resolve();
+  }
+  const index = els.charts.indexOf(host);
+  if (index < 0) {
+    return Promise.resolve();
+  }
+  const ui = chartUi[index];
+  ui.card.style.minHeight = "";
+  const chrome = measureMobileBelowChartChrome(ui);
+  const cardH = ui.card.clientHeight || 0;
+  const maxPlot = getChartHeight(state.displayedSection);
+  const budget = cardH > 80 ? cardH - chrome - 8 : maxPlot - chrome;
+  const next = Math.max(160, Math.min(maxPlot, budget));
+  const current = Number.parseFloat(host.style.height) || 0;
+  if (Math.abs(current - next) < 2) {
+    return Promise.resolve();
+  }
+  host.style.height = `${Math.round(next)}px`;
+  return Promise.resolve();
 }
 
 function prepareChartsRender(figures) {
@@ -9293,11 +9867,22 @@ async function renderChartsToDom(figures, section = state.displayedSection, onPr
     figure.layout = figure.layout || {};
     figure.layout.legend = figure.layout.legend || {};
     figure.layout.showlegend = false;
+    suppressMobileFigureTitle(figure);
     if (!isWindRoseFigure && !isTopoMapShell) {
-      figure.layout.margin = {
-        ...(figure.layout.margin || {}),
-        r: item.id === "hourly_precip" ? HOURLY_PRECIP_PANEL.margin.r : 32,
-      };
+      if (isMobileViewport()) {
+        figure.layout.margin = {
+          ...(figure.layout.margin || {}),
+          l: Math.min(Number(figure.layout.margin?.l) || 40, 36),
+          r: item.id === "hourly_precip" ? 28 : 12,
+          t: Math.min(Number(figure.layout.margin?.t) || 40, 32),
+          b: Math.min(Number(figure.layout.margin?.b) || 40, 28),
+        };
+      } else {
+        figure.layout.margin = {
+          ...(figure.layout.margin || {}),
+          r: item.id === "hourly_precip" ? HOURLY_PRECIP_PANEL.margin.r : 32,
+        };
+      }
     }
     applyStrictValueHoverTemplatesToFigure(figure, item.id || "");
     enforceFrequencyMonthAxis(figure, item.id || "");
@@ -9418,7 +10003,7 @@ async function renderChartsToDom(figures, section = state.displayedSection, onPr
       const maybeSync = item.id === "cloud_distribution" ? syncFogWindHoverTemplate(host) : Promise.resolve();
       const isWindRosePanel = item.id === "wind_rose" && windRoseToolbarSections().has(section);
       const isScatterWindDewpt = item.id === "scatter_wind_dewpt";
-      return maybeSync.then(() => {
+      return maybeSync.then(() => fitMobileChartAroundLegend(host)).then(() => {
         if (isWindRosePanel) {
           return scheduleWindRoseResize(host).then(() => ensureWindRoseCalmLayerOrder(host));
         }
@@ -9479,6 +10064,14 @@ async function renderChartsToDom(figures, section = state.displayedSection, onPr
 
   applyMaximizedChartState();
   updateChartToolbars(section);
+  syncMobileChartSelect(section);
+  applyMobileChartVisibility();
+  syncControlsPlacementForViewport();
+  syncLegendPlacementForViewport();
+  if (isMobileViewport()) {
+    await awaitLayoutSettle();
+    await resizeVisibleMobileChart();
+  }
 
   if (Number.isInteger(state.maximizedChartIndex) && state.maximizedChartIndex < visibleFigures.length) {
     const maximizedHost = els.charts[state.maximizedChartIndex];
@@ -9529,10 +10122,39 @@ const TOPO_MAP_PANEL = {
   backgroundOpacity: 0.7,
 };
 
-// The lightning heatmap draws a colorbar (plus "Strike count" title) just right
-// of the plot area at paper x=1.02. The default topo right margin clips it once
-// the chart box has overflow:hidden, so reserve extra room on the right.
+// Desktop: colorbar sits right of the plot. Mobile: horizontal colorbar below,
+// so right margin collapses and bottom margin grows.
 const LIGHTNING_HEATMAP_MARGIN_R = 64;
+const LIGHTNING_HEATMAP_MARGIN_R_MOBILE = 4;
+const LIGHTNING_HEATMAP_MARGIN_B_MOBILE = 50;
+
+function getTopoMapPanelSpec() {
+  if (isMobileViewport()) {
+    return {
+      margin: { l: 4, r: 4, t: 8, b: 18 },
+      plotDomain: { x: [0.01, 0.99], y: [0.01, 0.99] },
+      backgroundScale: TOPO_MAP_PANEL.backgroundScale,
+      backgroundOpacity: TOPO_MAP_PANEL.backgroundOpacity,
+    };
+  }
+  return {
+    margin: { ...TOPO_MAP_PANEL.margin },
+    plotDomain: {
+      x: TOPO_MAP_PANEL.plotDomain.x.slice(),
+      y: TOPO_MAP_PANEL.plotDomain.y.slice(),
+    },
+    backgroundScale: TOPO_MAP_PANEL.backgroundScale,
+    backgroundOpacity: TOPO_MAP_PANEL.backgroundOpacity,
+  };
+}
+
+function getLightningHeatmapMarginR() {
+  return isMobileViewport() ? LIGHTNING_HEATMAP_MARGIN_R_MOBILE : LIGHTNING_HEATMAP_MARGIN_R;
+}
+
+function getLightningHeatmapMarginB(baseB = TOPO_MAP_PANEL.margin.b) {
+  return isMobileViewport() ? LIGHTNING_HEATMAP_MARGIN_B_MOBILE : baseB;
+}
 
 const POLAR_TOPO_FIGURE_IDS = new Set([
   "wind_rose",
@@ -9584,35 +10206,56 @@ function applyTopoMapPanelLayout(figure, figureId = "", options = {}) {
   }
 
   const { chartHeight = null } = options;
-  figure.layout.margin = { ...TOPO_MAP_PANEL.margin };
+  const panel = getTopoMapPanelSpec();
+  figure.layout.margin = { ...panel.margin };
   if (chartHeight != null) {
     figure.layout.height = chartHeight;
   }
   delete figure.layout.width;
 
-  const domainX = TOPO_MAP_PANEL.plotDomain.x.slice();
-  const domainY = TOPO_MAP_PANEL.plotDomain.y.slice();
+  const domainX = panel.plotDomain.x.slice();
+  const domainY = panel.plotDomain.y.slice();
 
   if (figureId === "lightning_heatmap") {
-    figure.layout.margin.r = LIGHTNING_HEATMAP_MARGIN_R;
+    figure.layout.margin.r = getLightningHeatmapMarginR();
+    figure.layout.margin.b = getLightningHeatmapMarginB(panel.margin.b);
+    const isGaf = isGafLightningFigure(figure);
+    const bbox = Array.isArray(figure.layout?.meta?.gafBbox) ? figure.layout.meta.gafBbox : null;
+    const plotWidth = Number(figure.layout.width) || Number(options.plotWidth) || 360;
+    const plotHeight = Number(chartHeight) || Number(figure.layout.height) || 360;
+    const mapDomains = isGaf && bbox
+      ? computeGafLightningMapDomains(bbox, plotWidth, plotHeight)
+      : { x: domainX, y: domainY };
     figure.layout.xaxis = {
       ...(figure.layout.xaxis || {}),
-      domain: domainX,
-      scaleanchor: "y",
-      scaleratio: 1,
+      domain: mapDomains.x,
       automargin: false,
+      fixedrange: true,
     };
     figure.layout.yaxis = {
       ...(figure.layout.yaxis || {}),
-      domain: domainY,
+      domain: mapDomains.y,
       automargin: false,
+      fixedrange: true,
     };
-    if (!isGafLightningFigure(figure)) {
+    if (isGaf) {
+      // Aspect is encoded in the domain; scaleanchor letterboxing lets scatter
+      // overlays paint into empty gutters around the basemap.
+      delete figure.layout.xaxis.scaleanchor;
+      delete figure.layout.xaxis.scaleratio;
+      delete figure.layout.xaxis.constrain;
+    } else {
+      figure.layout.xaxis.scaleanchor = "y";
+      figure.layout.xaxis.scaleratio = 1;
+      figure.layout.xaxis.constrain = "domain";
       enforceLightningHeatmapTopoAxis(figure);
     }
     const trace = (figure.data || []).find((entry) => String(entry?.type || "").toLowerCase() === "heatmap");
     if (trace) {
       trace.colorbar = lightningHeatmapColorbar(trace.colorbar || {});
+    }
+    if (isMobileViewport()) {
+      figure.layout.title = { text: "" };
     }
     return;
   }
@@ -9630,24 +10273,36 @@ function buildTopoMapPanelRelayout(host) {
     return {};
   }
 
-  const domainX = TOPO_MAP_PANEL.plotDomain.x.slice();
-  const domainY = TOPO_MAP_PANEL.plotDomain.y.slice();
+  const panel = getTopoMapPanelSpec();
+  const domainX = panel.plotDomain.x.slice();
+  const domainY = panel.plotDomain.y.slice();
   const relayout = {
-    "margin.l": TOPO_MAP_PANEL.margin.l,
-    "margin.r": TOPO_MAP_PANEL.margin.r,
-    "margin.t": TOPO_MAP_PANEL.margin.t,
-    "margin.b": TOPO_MAP_PANEL.margin.b,
+    "margin.l": panel.margin.l,
+    "margin.r": panel.margin.r,
+    "margin.t": panel.margin.t,
+    "margin.b": panel.margin.b,
   };
 
   if (figureId === "lightning_heatmap") {
     Object.assign(relayout, {
-      "margin.r": LIGHTNING_HEATMAP_MARGIN_R,
+      "margin.r": getLightningHeatmapMarginR(),
+      "margin.b": getLightningHeatmapMarginB(panel.margin.b),
       "xaxis.domain": domainX,
       "yaxis.domain": domainY,
     });
     const meta = host?.layout?.meta || {};
     if (String(meta.lightningView || "") === "gaf") {
       const bbox = Array.isArray(meta.gafBbox) ? meta.gafBbox : null;
+      const width = Math.round(host.layout?.width || host.offsetWidth || host.clientWidth || 0);
+      const height = Math.round(host.layout?.height || host.offsetHeight || host.clientHeight || 0);
+      if (bbox && width > 0 && height > 0) {
+        const mapDomains = computeGafLightningMapDomains(bbox, width, height);
+        relayout["xaxis.domain"] = mapDomains.x;
+        relayout["yaxis.domain"] = mapDomains.y;
+      }
+      relayout["xaxis.scaleanchor"] = null;
+      relayout["xaxis.scaleratio"] = null;
+      relayout["xaxis.constrain"] = null;
       if (bbox && bbox.length === 4) {
         relayout["xaxis.range"] = [bbox[2], bbox[3]];
         relayout["yaxis.range"] = [bbox[0], bbox[1]];
@@ -9714,12 +10369,52 @@ function relayoutTopoMapPanel(host) {
   });
 }
 
+function suppressMobileFigureTitle(figure) {
+  if (!figure?.layout || !isMobileViewport()) {
+    return;
+  }
+  figure.layout.title = { text: "" };
+  // Reclaim top chrome that was reserved for the in-figure title.
+  if (figure.layout.margin && Number(figure.layout.margin.t) > 12) {
+    figure.layout.margin = {
+      ...figure.layout.margin,
+      t: Math.min(Number(figure.layout.margin.t) || 12, 12),
+    };
+  }
+}
+
 function lightningHeatmapColorbar(extra = {}) {
   // Shared formatting wins over any prior colorbar fields so aerodrome / GAF /
   // region legends stay visually identical (scale values are set separately).
+  // No "Strike count" title — the chart dropdown already names this figure.
+  if (isMobileViewport()) {
+    const colorbar = {
+      ...extra,
+      orientation: "h",
+      title: { text: "" },
+      x: 0.5,
+      xanchor: "center",
+      y: 0.02,
+      yanchor: "bottom",
+      len: 0.92,
+      lenmode: "fraction",
+      thickness: 12,
+      thicknessmode: "pixels",
+      xpad: 0,
+      ypad: 0,
+      outlinewidth: 1,
+      outlinecolor: "rgb(68, 68, 68)",
+    };
+    delete colorbar.tickmode;
+    delete colorbar.dtick;
+    delete colorbar.tick0;
+    return colorbar;
+  }
+
   const colorbar = {
     ...extra,
-    title: { text: "Strike count" },
+    orientation: "v",
+    title: { text: "" },
     x: 1.02,
     xanchor: "left",
     len: 0.75,
@@ -9870,16 +10565,20 @@ function applyLightningHeatmapStyle(figure, { icao = "", season = "all", fixedSc
   trace.colorbar = lightningHeatmapColorbar(trace.colorbar || {});
 
   figure.layout = figure.layout || {};
-  const priorTitle = figure.layout.title;
-  figure.layout.title = {
-    ...(typeof priorTitle === "object" && priorTitle ? priorTitle : {}),
-    text: "Lightning Strike Frequency",
-    font: { size: 14, ...((typeof priorTitle === "object" && priorTitle?.font) || {}) },
-    x: 0.01,
-    xanchor: "left",
-    y: 0.98,
-    yanchor: "top",
-  };
+  if (isMobileViewport()) {
+    figure.layout.title = { text: "" };
+  } else {
+    const priorTitle = figure.layout.title;
+    figure.layout.title = {
+      ...(typeof priorTitle === "object" && priorTitle ? priorTitle : {}),
+      text: "Lightning Strike Frequency",
+      font: { size: 14, ...((typeof priorTitle === "object" && priorTitle?.font) || {}) },
+      x: 0.01,
+      xanchor: "left",
+      y: 0.98,
+      yanchor: "top",
+    };
+  }
   const scaleToken = fixedScale
     ? String(Math.round(resolvedZmax))
     : `${String(Math.round(resolvedZmin))}-${String(Math.round(resolvedZmax))}`;
@@ -11266,12 +11965,20 @@ function wireControls() {
     }
   });
 
+  attachMobileChromeListeners();
+  syncControlsPlacementForViewport();
+  syncLegendPlacementForViewport();
+  syncMobileSectionSelect();
+  syncMobileChartSelect(state.requestedSection);
+  applyMobileChartVisibility();
   renderErrorBarsToggle();
 
   if (els.errorBarsToggle) {
     els.errorBarsToggle.addEventListener("click", () => {
       state.showErrorBars = !state.showErrorBars;
       renderErrorBarsToggle();
+      // Clear sticky focus/hover on touch so the off state matches initial white.
+      els.errorBarsToggle.blur();
       if (state.latestFigures.length) {
         refreshErrorBarsOnVisibleCharts();
       }
@@ -11311,10 +12018,14 @@ function wireControls() {
       cancelAnimationFrame(resizeFrame);
     }
     resizeFrame = requestAnimationFrame(() => {
+      applyMobileChartVisibility();
       applyChartShellHeights(state.displayedSection);
       if (state.latestFigures.length) {
         els.charts.forEach((host, index) => {
           if (index < state.latestFigures.length && !chartUi[index].card.classList.contains("hidden")) {
+            if (isMobileViewport() && chartUi[index].card.classList.contains("is-hidden-for-mobile-chart")) {
+              return;
+            }
             if (isWindRoseChartHost(host)) {
               const chartHeight = getChartHeight(state.displayedSection);
               Plotly.relayout(host, { height: chartHeight })

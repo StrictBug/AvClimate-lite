@@ -502,6 +502,37 @@ body.lite-mode .lite-only {
   margin: 0;
 }
 
+.mobile-control-strip {
+  display: none;
+}
+
+.mobile-selectors {
+  display: none;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  padding: 2px 4px;
+}
+
+.mobile-select {
+  flex: 0 1 auto;
+  width: min(46vw, 180px);
+  min-width: 120px;
+  padding: 5px 22px 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid #cccccc;
+  background: #ffffff;
+  color: #333333;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23555'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+}
+
 .category-btn {
   padding: 4px 10px;
   background: #ffffff;
@@ -574,12 +605,24 @@ body.lite-mode .lite-only {
   padding: 6px 12px;
   min-height: 34px;
   cursor: pointer;
+  box-shadow: none;
   transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.error-bars-toggle:hover {
-  border-color: rgba(33, 89, 209, 0.42);
-  background: rgba(33, 89, 209, 0.08);
+/* Keep the off state identical to the initial page-load look (touch can leave
+   :hover stuck after a tap, which previously tinted the button blue). */
+.error-bars-toggle:not(.is-active) {
+  background: rgba(255, 255, 255, 0.95);
+  color: #335285;
+  border-color: rgba(33, 89, 209, 0.28);
+  box-shadow: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .error-bars-toggle:not(.is-active):hover {
+    border-color: rgba(33, 89, 209, 0.42);
+    background: rgba(33, 89, 209, 0.08);
+  }
 }
 
 .error-bars-toggle.is-active {
@@ -587,6 +630,12 @@ body.lite-mode .lite-only {
   color: #ffffff;
   border-color: #2159d1;
   box-shadow: 0 2px 8px rgba(33, 89, 209, 0.25);
+}
+
+.error-bars-toggle.is-active:hover {
+  background: linear-gradient(180deg, #3b6ed8 0%, #2159d1 100%);
+  color: #ffffff;
+  border-color: #2159d1;
 }
 
 .control input,
@@ -786,6 +835,10 @@ body.lite-mode .lite-only {
   padding: 0;
   border: 0;
   pointer-events: none; /* Let clicks pass through empty space */
+}
+
+.chart-card-toolbar.hidden {
+  display: none;
 }
 
 .chart-card-toolbar > * {
@@ -1005,6 +1058,16 @@ body.lite-mode .lite-only {
   grid-row: 1 / span var(--expanded-chart-rows, 2);
 }
 
+.chart-grid.has-mobile-single-chart .chart-card.is-hidden-for-mobile-chart {
+  display: none !important;
+}
+
+.chart-grid.has-mobile-single-chart .chart-card.is-mobile-chart-active {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-height: 0;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(140px, 1fr));
@@ -1122,6 +1185,224 @@ body.lite-mode .lite-only {
   display: none;
 }
 
+@media (max-width: 768px) {
+  .category-buttons {
+    display: none;
+  }
+
+  .category-row {
+    background: var(--av-blue-light);
+    padding: 6px 8px;
+  }
+
+  .mobile-control-strip {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 6px;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .mobile-selectors,
+  .controls {
+    display: grid;
+    width: min(92vw, 348px); /* matches 2×170px selects + 8px gap */
+    gap: 8px;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+  }
+
+  .mobile-selectors {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mobile-select {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .controls {
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items: end;
+    overflow: visible;
+    background: transparent;
+  }
+
+  .control {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 2px;
+    font-size: 10px;
+    color: #ffffff;
+    font-weight: 600;
+  }
+
+  .control span {
+    display: none;
+  }
+
+  .control-toggle {
+    min-width: 0;
+  }
+
+  .control select,
+  .error-bars-toggle {
+    width: 100%;
+    min-width: 0;
+    min-height: 30px;
+    padding: 5px 22px 5px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 4px;
+    border: 1px solid #cccccc;
+    background: #ffffff;
+    color: #333333;
+    box-sizing: border-box;
+    box-shadow: none;
+  }
+
+  .control select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23555'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 7px center;
+  }
+
+  .error-bars-toggle {
+    padding: 5px 6px;
+    white-space: nowrap;
+  }
+
+  .error-bars-toggle:not(.is-active) {
+    background: #ffffff;
+    color: #333333;
+    border-color: #cccccc;
+    box-shadow: none;
+  }
+
+  .error-bars-toggle.is-active {
+    background: linear-gradient(180deg, #3b6ed8 0%, #2159d1 100%);
+    color: #ffffff;
+    border-color: #2159d1;
+    box-shadow: none;
+  }
+
+  .error-bars-toggle.is-active:hover {
+    background: linear-gradient(180deg, #3b6ed8 0%, #2159d1 100%);
+    color: #ffffff;
+    border-color: #2159d1;
+  }
+
+  .chart-shell {
+    order: 1;
+  }
+
+  .chart-card > .chart-legend:not(.hidden) {
+    order: 2;
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    align-self: center;
+    width: max-content;
+    max-width: min(100%, 360px);
+    margin: 6px auto;
+    box-sizing: border-box;
+  }
+
+  .chart-card > .chart-legend.hidden {
+    display: none;
+  }
+
+  .chart-zoom-toggle {
+    position: static;
+    display: inline-flex;
+    align-self: center;
+    order: 3;
+    margin: 2px auto 4px;
+  }
+
+  .chart-card-toolbar {
+    position: static;
+    align-items: center;
+    flex: 0 0 auto;
+    order: 4;
+    margin: 4px 0 0;
+  }
+
+  .chart-card-toolbar.is-wind-toolbar .lite-control-row,
+  .chart-card-toolbar.is-lightning-toolbar .lite-control-row {
+    gap: 4px;
+  }
+
+  .chart-card-toolbar.is-wind-toolbar #wr-hour-scroller-container,
+  .chart-card-toolbar.is-lightning-toolbar #lh-hour-scroller-container {
+    position: static;
+    transform: none;
+    left: auto;
+    top: auto;
+    display: none;
+  }
+
+  .chart-card-toolbar.is-wind-toolbar.is-hourly-mode #wr-hour-scroller-container,
+  .chart-card-toolbar.is-lightning-toolbar.is-hourly-mode #lh-hour-scroller-container {
+    display: flex;
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .chart-maximize-btn {
+    display: none !important;
+  }
+
+  .chart-grid.has-mobile-single-chart {
+    grid-template-columns: 1fr;
+    align-content: stretch;
+    align-items: stretch;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 0;
+    padding: 0 2px;
+  }
+
+  .chart-grid.has-mobile-single-chart .chart-card.is-mobile-chart-active {
+    min-height: 0;
+    height: 100%;
+    padding: 2px 2px 0;
+  }
+
+  .chart-grid.has-mobile-single-chart .chart-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .chart-grid.has-mobile-single-chart .chart-shell .chart {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .page {
+    padding-top: 2px;
+  }
+
+  .metrics:empty {
+    display: none;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    margin-top: 4px;
+  }
+}
+
 @media (max-width: 860px) {
   .chart-grid {
     grid-template-columns: 1fr;
@@ -1135,10 +1416,8 @@ body.lite-mode .lite-only {
     flex-direction: column;
   }
 
-  .chart-legend {
-    width: 100%;
-    flex-basis: auto;
-    align-self: stretch;
+  .chart-shell .chart {
+    flex: 0 0 auto;
   }
 
   .metrics {
@@ -1171,5 +1450,125 @@ body.lite-mode .lite-only {
   .info-section p,
   .info-list {
     font-size: 13px;
+  }
+}
+
+/* Full-screen, scrollable About-the-data sheet on phones (must follow the
+   860px rules so those width/max-height tweaks do not win on small screens). */
+@media (max-width: 768px) {
+  .info-overlay {
+    align-items: stretch;
+    justify-content: stretch;
+    background: #ffffff;
+    padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  }
+
+  .info-card {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    min-height: 100%;
+    border-radius: 0;
+    border: 0;
+    box-shadow: none;
+    padding: 12px 14px 16px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .info-title {
+    flex: 0 0 auto;
+    font-size: 17px;
+    line-height: 1.25;
+    padding-right: 36px;
+    margin-bottom: 10px;
+  }
+
+  .info-close-btn {
+    top: max(8px, env(safe-area-inset-top, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+    width: 28px;
+    height: 28px;
+    font-size: 18px;
+  }
+
+  .info-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-bottom: 8px;
+  }
+
+  .info-graph-table,
+  .info-graph-table thead,
+  .info-graph-table tbody,
+  .info-graph-table th,
+  .info-graph-table td,
+  .info-graph-table tr {
+    display: block;
+    width: 100%;
+  }
+
+  .info-graph-table thead {
+    display: none;
+  }
+
+  .info-graph-table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .info-graph-table tbody tr {
+    border: 1px solid #d5e0f2;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    background: #ffffff;
+    overflow: hidden;
+  }
+
+  .info-graph-table td {
+    border: 0;
+    border-bottom: 1px solid #e8eef7;
+    padding: 8px 10px;
+    white-space: normal;
+    width: auto;
+  }
+
+  .info-graph-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .info-graph-table td:first-child {
+    white-space: normal;
+    background: #eef4ff;
+  }
+
+  .info-graph-table td:nth-child(2),
+  .info-graph-table td:nth-child(3) {
+    width: auto;
+  }
+
+  .info-graph-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: #274f9f;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 4px;
+  }
+
+  .info-class-item {
+    grid-template-columns: 1fr;
+    gap: 2px 0;
+  }
+
+  .info-class-term {
+    padding-top: 0;
   }
 }
