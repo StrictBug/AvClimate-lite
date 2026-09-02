@@ -1855,6 +1855,15 @@ function resizeVisibleMobileChart() {
       scheduleGafLightningSeal(host);
       return;
     }
+    if (host.dataset?.figureId === "lightning_heatmap"
+      && shouldUseHourlyLightningHeatmap()
+      && !isLightningGafZoom()
+      && !isGafLightningFigure({ layout: host.layout })) {
+      return scheduleHostResize(host, { recalibrateFrame: true })
+        .then(() => relayoutTopoMapPanel(host))
+        .then(() => awaitLayoutSettle())
+        .then(() => enterLightningHourlyOverlayCurrent(host));
+    }
     scheduleHostResize(host, { recalibrateFrame: true });
   });
 }
@@ -2788,14 +2797,14 @@ function ensureLightningOverlayHost(baseHost) {
   return overlay;
 }
 
-function buildLightningOverlayLayout(baseHost) {
+function buildLightningOverlayLayoutFromBase(baseHost, { uirevision = null } = {}) {
   const full = baseHost?._fullLayout || {};
   const size = full._size || {};
   const layoutMargin = baseHost?.layout?.margin || {};
   const width = Math.round(baseHost.offsetWidth || baseHost.clientWidth || 0);
   const height = Math.round(baseHost.offsetHeight || baseHost.clientHeight || 0);
-  const xRange = Array.isArray(full.xaxis?.range) ? full.xaxis.range.slice() : null;
-  const yRange = Array.isArray(full.yaxis?.range) ? full.yaxis.range.slice() : null;
+  const xFull = full.xaxis || {};
+  const yFull = full.yaxis || {};
   const margin = {
     l: Math.round(Number.isFinite(size.l) ? size.l : (layoutMargin.l || 0)),
     r: Math.round(Number.isFinite(size.r) ? size.r : (layoutMargin.r || 0)),
@@ -2803,14 +2812,26 @@ function buildLightningOverlayLayout(baseHost) {
     b: Math.round(Number.isFinite(size.b) ? size.b : (layoutMargin.b || 0)),
   };
   const axisCommon = {
+    autorange: false,
     fixedrange: true,
     visible: false,
     showgrid: false,
     zeroline: false,
-    ticks: "",
     showticklabels: false,
+    ticks: "",
+    automargin: false,
   };
-  return {
+  // Copy the *resolved* domain and range from the sealed base. The base uses
+  // scaleanchor + constrain:"domain" (letterboxing) which shrinks the resolved
+  // domain; copying that domain/range without scaleanchor reproduces the identical
+  // plotting rectangle while avoiding any scale re-solve on the overlay.
+  const xaxis = { ...axisCommon };
+  if (Array.isArray(xFull.range)) xaxis.range = xFull.range.slice();
+  if (Array.isArray(xFull.domain)) xaxis.domain = xFull.domain.slice();
+  const yaxis = { ...axisCommon };
+  if (Array.isArray(yFull.range)) yaxis.range = yFull.range.slice();
+  if (Array.isArray(yFull.domain)) yaxis.domain = yFull.domain.slice();
+  const layout = {
     width,
     height,
     autosize: false,
@@ -2819,9 +2840,17 @@ function buildLightningOverlayLayout(baseHost) {
     plot_bgcolor: "rgba(0,0,0,0)",
     showlegend: false,
     hovermode: "closest",
-    xaxis: { ...axisCommon, range: xRange || undefined, autorange: !xRange },
-    yaxis: { ...axisCommon, range: yRange || undefined, autorange: !yRange },
+    xaxis,
+    yaxis,
   };
+  if (uirevision) {
+    layout.uirevision = uirevision;
+  }
+  return layout;
+}
+
+function buildLightningOverlayLayout(baseHost) {
+  return buildLightningOverlayLayoutFromBase(baseHost);
 }
 
 // GAF/regional hourly uses a sealed single Plotly host (no overlay div). After the
@@ -3363,52 +3392,7 @@ function scheduleGafLightningSeal(host) {
 // The overlay's geometry is copied from the base's resolved `_fullLayout` *after*
 // seal, so the two planes align pixel-for-pixel.
 function buildGafLightningOverlayLayout(baseHost) {
-  const full = baseHost?._fullLayout || {};
-  const size = full._size || {};
-  const layoutMargin = baseHost?.layout?.margin || {};
-  const width = Math.round(baseHost.offsetWidth || baseHost.clientWidth || 0);
-  const height = Math.round(baseHost.offsetHeight || baseHost.clientHeight || 0);
-  const xFull = full.xaxis || {};
-  const yFull = full.yaxis || {};
-  const margin = {
-    l: Math.round(Number.isFinite(size.l) ? size.l : (layoutMargin.l || 0)),
-    r: Math.round(Number.isFinite(size.r) ? size.r : (layoutMargin.r || 0)),
-    t: Math.round(Number.isFinite(size.t) ? size.t : (layoutMargin.t || 0)),
-    b: Math.round(Number.isFinite(size.b) ? size.b : (layoutMargin.b || 0)),
-  };
-  const axisCommon = {
-    autorange: false,
-    fixedrange: true,
-    visible: false,
-    showgrid: false,
-    zeroline: false,
-    showticklabels: false,
-    ticks: "",
-    automargin: false,
-  };
-  // Copy the *resolved* domain and range from the sealed base. The base uses
-  // scaleanchor + constrain:"domain" (letterboxing) which shrinks the resolved
-  // domain; copying that domain/range without scaleanchor reproduces the identical
-  // plotting rectangle while avoiding any scale re-solve on the overlay.
-  const xaxis = { ...axisCommon };
-  if (Array.isArray(xFull.range)) xaxis.range = xFull.range.slice();
-  if (Array.isArray(xFull.domain)) xaxis.domain = xFull.domain.slice();
-  const yaxis = { ...axisCommon };
-  if (Array.isArray(yFull.range)) yaxis.range = yFull.range.slice();
-  if (Array.isArray(yFull.domain)) yaxis.domain = yFull.domain.slice();
-  return {
-    width,
-    height,
-    autosize: false,
-    margin,
-    paper_bgcolor: "rgba(0,0,0,0)",
-    plot_bgcolor: "rgba(0,0,0,0)",
-    showlegend: false,
-    hovermode: "closest",
-    uirevision: "gaf-lightning-overlay",
-    xaxis,
-    yaxis,
-  };
+  return buildLightningOverlayLayoutFromBase(baseHost, { uirevision: "gaf-lightning-overlay" });
 }
 
 function buildGafLightningOverlayDataTrace(baseHost, cropped) {
@@ -3555,7 +3539,6 @@ async function enterLightningHourlyOverlay(baseHost, zGrid) {
     return;
   }
   const z = lightningOverlayZFromGrid(baseHost, zGrid);
-  const layout = buildLightningOverlayLayout(baseHost);
   const trace = buildLightningOverlayDataTrace(baseHost, z);
   // Rings must live on the overlay (above the sealed base). Clear base ring
   // traces AND lite/backend circle shapes so the transparent overlay does not
@@ -3563,8 +3546,11 @@ async function enterLightningHourlyOverlay(baseHost, zGrid) {
   await clearLightningRingShapesOnHost(baseHost);
   await deleteLightningRingTracesOnHost(baseHost);
   const rings = buildAerodromeLightningRingTraces();
+  await awaitLayoutSettle();
+  const layout = buildLightningOverlayLayout(baseHost);
   overlay.classList.add("is-visible");
   await Plotly.react(overlay, [trace, ...rings], layout, { displayModeBar: false, responsive: false });
+  positionLightningOverlay(baseHost, overlay);
   const ctx = getLightningHourlyPinContext(baseHost);
   if (!ctx.width || !ctx.height) {
     return;
