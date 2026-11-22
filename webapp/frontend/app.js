@@ -17491,8 +17491,7 @@ async function init() {
       }
     }
     document.documentElement.dataset.avBuild = buildId;
-    // Visible proof the live JS bundle loaded (Safari cache was masking prior fixes).
-    document.title = `Aviation climatology · ${buildId}`;
+    document.title = "Aviation climatology";
 
     const isLite = await checkLiteMode();
     await loadAirportCoverage();
