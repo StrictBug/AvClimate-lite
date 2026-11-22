@@ -754,7 +754,8 @@ body.lite-mode .lite-only {
 
 
 .chart-card {
-  --chart-toolbar-top: 5px;
+  --chart-toolbar-top: 10px;
+  --chart-top-chrome: 10px;
   background: #d7dbe1;
   border: 1px solid #bfc5cc;
   border-radius: 4px;
@@ -764,6 +765,65 @@ body.lite-mode .lite-only {
   flex-direction: column;
   position: relative;
   overflow: visible; /* Allow toolbar to float */
+}
+
+/* Legacy wrapper from earlier experiments. */
+.chart-card-top-chrome {
+  display: none !important;
+}
+
+/*
+ * Maximized Wind mode toolbar overlays the card (no flex footprint). Keeping it
+ * out of flow stops the roses jumping when the hourly scroller appears.
+ */
+.chart-mode-toolbar-slot {
+  display: none !important;
+}
+
+/*
+ * Mode toolbars (Wind / Fog day-type toggles) always overlay the card.
+ * Keeping them out of flex flow aligns Plotly titles with sibling panels
+ * that have no toolbar.
+ */
+.chart-card-toolbar:not(.hidden),
+.chart-card-toolbar.is-mode-toolbar-pinned {
+  position: absolute !important;
+  top: var(--chart-top-chrome, 10px) !important;
+  right: 14px !important;
+  left: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+  z-index: 7;
+  pointer-events: none;
+  flex: none !important;
+  order: 0;
+  width: auto;
+  height: auto;
+}
+
+.chart-card-toolbar:not(.hidden) > *,
+.chart-card-toolbar:not(.hidden) button,
+.chart-card-toolbar:not(.hidden) .segmented-toggle,
+.chart-card-toolbar:not(.hidden) .lite-control-row,
+.chart-card-toolbar:not(.hidden) .hour-scroller-row,
+.chart-card-toolbar.is-mode-toolbar-pinned > *,
+.chart-card-toolbar.is-mode-toolbar-pinned button,
+.chart-card-toolbar.is-mode-toolbar-pinned .segmented-toggle,
+.chart-card-toolbar.is-mode-toolbar-pinned .lite-control-row,
+.chart-card-toolbar.is-mode-toolbar-pinned .hour-scroller-row {
+  pointer-events: auto;
+}
+
+/* Always overlay the scroller — never let it enter normal flow. */
+.chart-card-toolbar:not(.hidden) #wr-hour-scroller-container,
+.chart-card-toolbar.is-mode-toolbar-pinned.is-wind-toolbar #wr-hour-scroller-container,
+.chart-card.is-maximized .chart-card-toolbar.is-wind-toolbar #wr-hour-scroller-container {
+  position: absolute !important;
+  top: calc(100% + 4px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  margin: 0 !important;
 }
 
 .chart-shell {
@@ -792,6 +852,29 @@ body.lite-mode .lite-only {
   pointer-events: auto;
 }
 
+/* National hourly strikes. The grid is ~300k cells; a canvas blit replaces a
+   Plotly SVG restyle so the hour slider stays with the pointer. */
+.national-lightning-canvas {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.national-lightning-hover {
+  position: fixed;
+  z-index: 6;
+  display: none;
+  pointer-events: none;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(68, 68, 68, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  color: #222;
+  font: 12px/1.35 "Source Sans 3", "Open Sans", Arial, sans-serif;
+  white-space: pre;
+}
+
 .chart-shell.no-legend .chart {
   flex-basis: 100%;
 }
@@ -807,18 +890,12 @@ body.lite-mode .lite-only {
   overflow: hidden;
 }
 
-.chart-shell.is-scatter-wind-dewpt-shell {
-  align-items: center;
-  width: 96%;
-  max-width: 96%;
-  margin-inline: auto;
-}
-
+.chart-shell.is-scatter-wind-dewpt-shell,
 .chart-shell.is-temp-dewpoint-shell {
   align-items: center;
-  width: 96%;
-  max-width: 96%;
-  margin-inline: auto;
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
 }
 
 .chart-card-toolbar {
@@ -827,10 +904,11 @@ body.lite-mode .lite-only {
   align-items: flex-end;
   justify-content: flex-start;
   gap: 4px;
+  /* Default absolute — see :not(.hidden) rule above. Static would push titles down. */
   position: absolute;
-  top: 5px;
+  top: var(--chart-toolbar-top, 10px);
   right: 14px;
-  z-index: 5;
+  z-index: 7;
   margin: 0;
   padding: 0;
   border: 0;
@@ -899,11 +977,16 @@ body.lite-mode .lite-only {
   pointer-events: auto;
 }
 
+/*
+ * Corner controls are positioned on .chart-shell. Card padding is 3px, so
+ * bottom: 9px on the shell matches a 12px inset from the card edge — the
+ * baseline Local/Regional/National already used when it lived on the card.
+ */
 .chart-maximize-btn {
   appearance: none;
   position: absolute;
   right: 10px;
-  bottom: 8px;
+  bottom: 9px;
   z-index: 6;
   margin: 0;
   border: 1px solid rgba(33, 89, 209, 0.22);
@@ -919,11 +1002,14 @@ body.lite-mode .lite-only {
   transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
+/* Same absolute parent + bottom as Maximize (plot shell) so the row lines up. */
 .chart-zoom-toggle {
   position: absolute;
   right: 96px;
-  bottom: 8px;
+  bottom: 9px;
   z-index: 6;
+  display: inline-flex;
+  align-items: center;
   gap: 2px;
   padding: 1px;
   background: rgba(255, 255, 255, 0.94);
@@ -954,6 +1040,272 @@ body.lite-mode .lite-only {
   background: linear-gradient(180deg, #3b6ed8 0%, #2159d1 100%);
   color: #ffffff;
   border-color: #2159d1;
+}
+
+.chart-compare-toolbar {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  position: absolute;
+  left: 10px;
+  bottom: 9px;
+  z-index: 7;
+  margin: 0;
+  padding: 0;
+  pointer-events: auto;
+  max-width: calc(100% - 120px);
+  overflow: visible;
+}
+
+.chart-card.is-maximized .chart-compare-toolbar:not(.hidden) {
+  display: flex;
+}
+
+.chart-compare-toolbar.hidden {
+  display: none !important;
+}
+
+.chart-compare-toggle,
+.chart-sync-axes-toggle {
+  appearance: none;
+  margin: 0;
+  border: 1px solid rgba(33, 89, 209, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #335285;
+  font-size: 11px;
+  line-height: 1.1;
+  font-weight: 700;
+  padding: 4px 10px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(22, 47, 94, 0.12);
+}
+
+.chart-compare-toggle:hover,
+.chart-sync-axes-toggle:hover {
+  background: rgba(33, 89, 209, 0.12);
+  border-color: rgba(33, 89, 209, 0.34);
+}
+
+.chart-compare-toggle.is-active,
+.chart-sync-axes-toggle.is-active {
+  background: linear-gradient(180deg, #3b6ed8 0%, #2159d1 100%);
+  color: #ffffff;
+  border-color: #2159d1;
+}
+
+.chart-compare-icao {
+  appearance: none;
+  margin: 0;
+  border: 1px solid rgba(33, 89, 209, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #335285;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  max-width: 140px;
+  box-shadow: 0 1px 4px rgba(22, 47, 94, 0.12);
+}
+
+.chart-compare-icao:disabled {
+  opacity: 0.55;
+}
+
+.chart-compare-icao.hidden,
+.chart-sync-axes-toggle.hidden {
+  display: none;
+}
+
+.chart-compare-panels {
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  gap: 0;
+  align-items: stretch;
+}
+
+.chart-compare-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.chart-compare-panel.is-compare.hidden {
+  display: none;
+}
+
+.chart-shell.is-compare-mode {
+  align-items: stretch;
+  width: 100%;
+}
+
+.chart-shell.is-compare-mode .chart-compare-panels {
+  flex: 1 1 0%;
+  min-width: 0;
+  width: auto;
+  gap: 10px;
+}
+
+.chart-shell.is-compare-mode .chart-compare-panel {
+  flex: 1 1 0%;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+}
+
+.chart-shell.is-compare-mode .chart-compare-panel.is-gaf-compare-fit {
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-shell.is-compare-mode .chart-compare-panel.is-gaf-compare-fit .chart {
+  flex: 0 0 auto;
+}
+
+.chart-shell.is-compare-mode .chart-legend {
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 140px;
+  align-self: center;
+}
+
+.chart-compare-label {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  z-index: 5;
+  margin: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(33, 89, 209, 0.18);
+  box-shadow: 0 1px 3px rgba(22, 47, 94, 0.1);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #335285;
+  pointer-events: none;
+}
+
+.chart-compare-label.hidden {
+  display: none;
+}
+
+.chart-compare-panel .chart {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.chart-shell.is-compare-mode .chart-compare-panel .chart {
+  /* Avoid width:100% !important — it fights Plotly's pixel pin and leaves the
+     SVG undersized inside a stretched host. JS sets matching style+layout width. */
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chart-compare-status {
+  position: absolute;
+  inset: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #3b4d6e;
+  background: rgba(215, 219, 225, 0.88);
+  border-radius: 4px;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.chart-compare-status.hidden {
+  display: none;
+}
+
+.chart-card.is-maximized {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Chart title badge — same pill chrome as Maximize / zoom toggles. */
+.chart-card-figure-title {
+  display: none;
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  z-index: 6;
+  margin: 0;
+  max-width: min(72%, 26rem);
+  padding: 4px 10px;
+  border: 1px solid rgba(33, 89, 209, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #335285;
+  font-family: "IBM Plex Sans", "Source Sans Pro", "Open Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+  box-shadow: 0 1px 4px rgba(22, 47, 94, 0.12);
+  pointer-events: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.chart-card-figure-title.is-visible {
+  display: inline-block;
+}
+
+.chart-card.is-maximized .chart-card-figure-title {
+  top: 10px;
+  left: 12px;
+  font-size: 12px;
+  padding: 5px 12px;
+}
+
+.chart-card.is-maximized .chart-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Dedicated strip for Compare / Restore so they never sit on the axes,
+     and so compare on/off keeps the same plot-to-controls gap. */
+  padding-bottom: 52px;
+  box-sizing: border-box;
+}
+
+/* Mode toggle overlays the shell; padding reserves room for toggle + hour slider. */
+.chart-card.is-maximized.is-wind-maximized .chart-shell.is-wind-rose-shell {
+  align-items: center;
+  padding-top: var(--chart-overlay-chrome, 64px);
+  margin-top: 0 !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.chart-card.is-maximized .chart-shell.is-compare-mode {
+  box-sizing: border-box;
+  align-items: center;
+  margin-top: 0 !important;
+}
+
+.chart-card.is-maximized.is-wind-maximized .chart-shell.is-wind-rose-shell.is-compare-mode {
+  padding-top: var(--chart-overlay-chrome, 64px);
+  align-items: center;
+  justify-content: center;
+  margin-top: 0 !important;
 }
 
 .segmented-toggle {
@@ -992,6 +1344,7 @@ body.lite-mode .lite-only {
 }
 
 .chart {
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 220px;
@@ -1329,11 +1682,18 @@ body.lite-mode .lite-only {
     margin: 2px auto 4px;
   }
 
+  .chart-card-top-chrome {
+    position: static;
+    height: auto;
+    padding: 0;
+    order: 4;
+    justify-content: center;
+  }
+
   .chart-card-toolbar {
     position: static;
     align-items: center;
     flex: 0 0 auto;
-    order: 4;
     margin: 4px 0 0;
   }
 

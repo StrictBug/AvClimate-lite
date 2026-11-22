@@ -71,6 +71,7 @@ WIND_GALE_MONTHLY_DIR = os.path.join(PRECOMPUTED_DIR, "wind_gale_monthly")
 FOG_LOW_CLOUD_PRECOMPUTED_DIR = os.path.join(PRECOMPUTED_DIR, "fog_low_cloud")
 SMOKE_DUST_PRECOMPUTED_DIR = os.path.join(PRECOMPUTED_DIR, "smoke_dust")
 LIGHTNING_RADIUS_KM = 8.0
+LIGHTNING_OUTER_RADIUS_KM = 16.0
 LIGHTNING_WINDOW_MINUTES = 10
 LIGHTNING_COVERAGE_START_UTC = pd.Timestamp("2008-02-25T00:00:00Z")
 LIGHTNING_STATS_MIN_YEAR = 2009  # Only full-year lightning data from 2009 onwards
@@ -109,8 +110,17 @@ SEASON_TO_MONTHS = {
 
 DRIVER_COLUMNS = ["enso", "iod", "sam", "mjo"]
 GALE_WEATHER_CATEGORIES = ["No wx", "SHRA", "TS"]
-THUNDERSTORM_LEGEND_LABEL = "Thunderstorm"
-TS_LEGEND_LABEL = "Thunderstorm"
+THUNDERSTORM_NEAR_FIELD = "Thunderstorm"
+THUNDERSTORM_OUTER_FIELD = "Thunderstorm_8_16"
+THUNDERSTORM_NEAR_LEGEND_LABEL = "TS (<8km)"
+THUNDERSTORM_OUTER_LEGEND_LABEL = "TS (8-16km)"
+THUNDERSTORM_LEGEND_LABEL = THUNDERSTORM_NEAR_LEGEND_LABEL
+TS_LEGEND_LABEL = THUNDERSTORM_NEAR_LEGEND_LABEL
+THUNDERSTORM_NEAR_COLOR = "#c62828"
+THUNDERSTORM_OUTER_COLOR = "#ef9a9a"
+RAIN_DAY_COLOR = "#2159d1"
+THUNDERSTORM_MONTHLY_FIELDS = (THUNDERSTORM_NEAR_FIELD, THUNDERSTORM_OUTER_FIELD)
+RAIN_THUNDER_MONTHLY_VALUE_FIELDS = ("Rain", *THUNDERSTORM_MONTHLY_FIELDS)
 
 BASE_CHART_COLUMNS = {"year", "month", "hour", "TM_FULL"}
 METRIC_COLUMNS = {"WND_SPD", "MAX_WND_GUST_10", "AIR_TEMP"}
@@ -473,7 +483,8 @@ def _parse_rain_rows(rows: Any) -> list[dict[str, Any]]:
                 "sam_norm": str(row.get("sam_norm", "")).strip().lower(),
                 "mjo_norm": str(row.get("mjo_norm", "")).strip().lower(),
                 "Rain": float(row.get("Rain", 0.0)),
-                "Thunderstorm": float(row.get("Thunderstorm", 0.0)),
+                THUNDERSTORM_NEAR_FIELD: float(row.get(THUNDERSTORM_NEAR_FIELD, 0.0)),
+                THUNDERSTORM_OUTER_FIELD: float(row.get(THUNDERSTORM_OUTER_FIELD, 0.0)),
             })
         except (TypeError, ValueError):
             continue
@@ -657,7 +668,8 @@ def _parse_precip_monthly_rows(rows: Any) -> list[dict[str, Any]]:
                 "sam_norm": str(row.get("sam_norm", "all")).strip().lower(),
                 "mjo_norm": str(row.get("mjo_norm", "all")).strip().lower(),
                 "Rain": float(row.get("Rain", 0.0)),
-                "Thunderstorm": float(row.get("Thunderstorm", 0.0)),
+                THUNDERSTORM_NEAR_FIELD: float(row.get(THUNDERSTORM_NEAR_FIELD, 0.0)),
+                THUNDERSTORM_OUTER_FIELD: float(row.get(THUNDERSTORM_OUTER_FIELD, 0.0)),
             })
         except (TypeError, ValueError):
             continue
@@ -1716,15 +1728,16 @@ def token_mask_from_columns(df: pd.DataFrame, tokens: list[str]) -> pd.Series:
 
 
 def compute_daily_weather_flags(df: pd.DataFrame, icao: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    daily_columns = ["bom_day", "bom_year", "bom_month", "Rain", *THUNDERSTORM_MONTHLY_FIELDS]
     if df.empty:
         empty = df.copy()
-        return empty, pd.DataFrame(columns=["bom_day", "bom_year", "bom_month", "Rain", "Thunderstorm"])
+        return empty, pd.DataFrame(columns=daily_columns)
 
     work = df.copy()
     work["TM_FULL"] = pd.to_datetime(work["TM_FULL"], utc=True, errors="coerce")
     work = work.dropna(subset=["TM_FULL"])
     if work.empty:
-        return work, pd.DataFrame(columns=["bom_day", "bom_year", "bom_month", "Rain", "Thunderstorm"])
+        return work, pd.DataFrame(columns=daily_columns)
 
     tz_name = airport_timezone(icao)
     local_ts = work["TM_FULL"].dt.tz_convert(tz_name)
@@ -1739,39 +1752,68 @@ def compute_daily_weather_flags(df: pd.DataFrame, icao: str) -> tuple[pd.DataFra
     else:
         work["is_rain_amount_obs"] = False
     work["is_rain_day_obs"] = work["is_rain_token_obs"] | work["is_rain_amount_obs"]
-    # Thunderstorm day = at least one strike within 8 km of ICAO on that BoM day.
-    work["is_ts_day_obs"] = lightning_day_within_radius_mask(work, icao, day_field="bom_day")
+    # Near band: ≥1 strike within 8 km. Outer band: strike within 16 km and none within 8 km.
+    work["is_ts_near_day_obs"] = lightning_day_within_radius_mask(
+        work, icao, day_field="bom_day", radius_km=LIGHTNING_RADIUS_KM
+    )
+    work["is_ts_within_16_day_obs"] = lightning_day_within_radius_mask(
+        work, icao, day_field="bom_day", radius_km=LIGHTNING_OUTER_RADIUS_KM
+    )
+    work["is_ts_outer_day_obs"] = work["is_ts_within_16_day_obs"] & ~work["is_ts_near_day_obs"]
 
     daily_flags = (
         work.groupby(["bom_day", "bom_year", "bom_month"], as_index=False)
         .agg(
             Rain=("is_rain_day_obs", "any"),
-            Thunderstorm=("is_ts_day_obs", "any"),
+            **{
+                THUNDERSTORM_NEAR_FIELD: ("is_ts_near_day_obs", "any"),
+                THUNDERSTORM_OUTER_FIELD: ("is_ts_outer_day_obs", "any"),
+            },
         )
     )
     return work, daily_flags
 
 
 HOURLY_THUNDER_HOUR_TYPE = "ThunderHour"
-HOURLY_THUNDER_HOUR_LABEL = "Thunderstorm"
+HOURLY_THUNDER_HOUR_OUTER_TYPE = "ThunderHour_8_16"
+HOURLY_THUNDER_HOUR_LABEL = THUNDERSTORM_NEAR_LEGEND_LABEL
+HOURLY_THUNDER_HOUR_OUTER_LABEL = THUNDERSTORM_OUTER_LEGEND_LABEL
 # Backward-compatible aliases used by existing precompute rows until regenerated.
 HOURLY_STRIKE_MAGNITUDE_TYPE = HOURLY_THUNDER_HOUR_TYPE
 HOURLY_STRIKE_MAGNITUDE_LABEL = HOURLY_THUNDER_HOUR_LABEL
+HOURLY_THUNDER_TYPES = (HOURLY_THUNDER_HOUR_TYPE, HOURLY_THUNDER_HOUR_OUTER_TYPE)
 
 
-def hourly_thunder_hour_counts(strike_hourly: pd.DataFrame) -> pd.DataFrame:
-    """Unique BoM days per year/month/UTC hour with at least one strike within 8 km."""
+def hourly_thunder_hour_counts(
+    strike_hourly: pd.DataFrame,
+    *,
+    flag_column: str = THUNDERSTORM_NEAR_FIELD,
+) -> pd.DataFrame:
+    """Unique BoM days per year/month/UTC hour for the selected thunder band flag."""
     columns = ["bom_year", "bom_month", "hour", "Count"]
-    if strike_hourly.empty:
+    if strike_hourly.empty or flag_column not in strike_hourly.columns:
+        return pd.DataFrame(columns=columns)
+    flagged = strike_hourly[strike_hourly[flag_column].fillna(False).astype(bool)]
+    if flagged.empty:
         return pd.DataFrame(columns=columns)
     return (
-        strike_hourly.groupby(["bom_year", "bom_month", "hour"], as_index=False)
+        flagged.groupby(["bom_year", "bom_month", "hour"], as_index=False)
         .agg(Count=("bom_day", "nunique"))
     )
 
 
-def lightning_hourly_strike_counts(icao: str) -> pd.DataFrame:
-    """Strike counts per BoM day and UTC hour within 8 km of the aerodrome."""
+def lightning_hourly_strike_counts(
+    icao: str,
+    *,
+    radius_km: float = LIGHTNING_OUTER_RADIUS_KM,
+) -> pd.DataFrame:
+    """
+    Strike counts per BoM day and UTC hour within radius_km of the aerodrome.
+
+    Also flags exclusive distance bands:
+    - Thunderstorm: ≥1 strike within 8 km
+    - Thunderstorm_8_16: ≥1 strike within 16 km and none within 8 km
+    """
     columns = [
         "bom_day",
         "bom_year",
@@ -1781,7 +1823,8 @@ def lightning_hourly_strike_counts(icao: str) -> pd.DataFrame:
         "month",
         "day",
         "strike_count",
-        "Thunderstorm",
+        THUNDERSTORM_NEAR_FIELD,
+        THUNDERSTORM_OUTER_FIELD,
     ]
     empty = pd.DataFrame(columns=columns)
     coords = airport_lat_lon(icao)
@@ -1802,9 +1845,10 @@ def lightning_hourly_strike_counts(icao: str) -> pd.DataFrame:
     if strikes.empty:
         return empty
 
-    lat_pad = LIGHTNING_RADIUS_KM / 111.0
+    max_radius = max(float(radius_km), float(LIGHTNING_OUTER_RADIUS_KM), float(LIGHTNING_RADIUS_KM))
+    lat_pad = max_radius / 111.0
     lon_scale = max(0.1, math.cos(math.radians(airport_lat)))
-    lon_pad = LIGHTNING_RADIUS_KM / (111.0 * lon_scale)
+    lon_pad = max_radius / (111.0 * lon_scale)
     strikes = strikes[
         strikes["LAT"].between(airport_lat - lat_pad, airport_lat + lat_pad)
         & strikes["LONG"].between(airport_lon - lon_pad, airport_lon + lon_pad)
@@ -1818,9 +1862,10 @@ def lightning_hourly_strike_counts(icao: str) -> pd.DataFrame:
         strikes["LAT"].to_numpy(dtype=float),
         strikes["LONG"].to_numpy(dtype=float),
     )
-    nearby = strikes.loc[distances <= LIGHTNING_RADIUS_KM].copy()
+    nearby = strikes.loc[distances <= max_radius].copy()
     if nearby.empty:
         return empty
+    nearby["distance_km"] = distances[distances <= max_radius]
 
     nearby = nearby[nearby["LTGN_TM"].dt.year >= LIGHTNING_STATS_MIN_YEAR].copy()
     if nearby.empty:
@@ -1835,24 +1880,46 @@ def lightning_hourly_strike_counts(icao: str) -> pd.DataFrame:
     nearby["year"] = nearby["LTGN_TM"].dt.year.astype(int)
     nearby["month"] = nearby["LTGN_TM"].dt.month.astype(int)
     nearby["day"] = nearby["LTGN_TM"].dt.day.astype(int)
+    nearby["is_near"] = nearby["distance_km"] <= LIGHTNING_RADIUS_KM
+    nearby["is_within_outer"] = nearby["distance_km"] <= LIGHTNING_OUTER_RADIUS_KM
 
     hourly = (
         nearby.groupby(["bom_day", "bom_year", "bom_month", "hour", "year", "month", "day"], as_index=False)
-        .size()
-        .rename(columns={"size": "strike_count"})
+        .agg(
+            strike_count=("distance_km", "size"),
+            near_count=("is_near", "sum"),
+            outer_count=("is_within_outer", "sum"),
+        )
     )
-    hourly["Thunderstorm"] = hourly["strike_count"] > 0
+    hourly[THUNDERSTORM_NEAR_FIELD] = hourly["near_count"] > 0
+    hourly[THUNDERSTORM_OUTER_FIELD] = (hourly["outer_count"] > 0) & ~hourly[THUNDERSTORM_NEAR_FIELD]
     return hourly[columns]
 
 
 def lightning_hourly_thunder_day_flags(icao: str) -> pd.DataFrame:
-    """One row per BoM day and UTC hour with at least one strike within 8 km."""
+    """One row per BoM day and UTC hour with exclusive near/outer thunder bands."""
+    columns = [
+        "bom_day",
+        "bom_year",
+        "bom_month",
+        "hour",
+        "year",
+        "month",
+        "day",
+        THUNDERSTORM_NEAR_FIELD,
+        THUNDERSTORM_OUTER_FIELD,
+    ]
     hourly = lightning_hourly_strike_counts(icao)
     if hourly.empty:
-        return pd.DataFrame(columns=["bom_day", "bom_year", "bom_month", "hour", "year", "month", "day", "Thunderstorm"])
-    flags = hourly[hourly["Thunderstorm"]].copy()
-    flags["Thunderstorm"] = True
-    return flags[["bom_day", "bom_year", "bom_month", "hour", "year", "month", "day", "Thunderstorm"]]
+        return pd.DataFrame(columns=columns)
+    flags = hourly[
+        hourly[THUNDERSTORM_NEAR_FIELD].fillna(False) | hourly[THUNDERSTORM_OUTER_FIELD].fillna(False)
+    ].copy()
+    if flags.empty:
+        return pd.DataFrame(columns=columns)
+    flags[THUNDERSTORM_NEAR_FIELD] = flags[THUNDERSTORM_NEAR_FIELD].fillna(False).astype(bool)
+    flags[THUNDERSTORM_OUTER_FIELD] = flags[THUNDERSTORM_OUTER_FIELD].fillna(False).astype(bool)
+    return flags[columns]
 
 
 def compute_hourly_rain_thunder_day_flags(
@@ -1862,7 +1929,7 @@ def compute_hourly_rain_thunder_day_flags(
     thunder_hourly: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Rain/thunder day flags per BoM day and UTC hour (same rules as daily precipitation)."""
-    columns = ["bom_day", "bom_year", "bom_month", "hour", "Rain", "Thunderstorm"]
+    columns = ["bom_day", "bom_year", "bom_month", "hour", "Rain", *THUNDERSTORM_MONTHLY_FIELDS]
     empty = pd.DataFrame(columns=columns)
     if precip_df.empty and (thunder_hourly is None or thunder_hourly.empty):
         return empty
@@ -1899,9 +1966,13 @@ def compute_hourly_rain_thunder_day_flags(
 
     if thunder_hourly is None:
         thunder_hourly = lightning_hourly_thunder_day_flags(icao)
-    thunder_part = pd.DataFrame(columns=["bom_day", "bom_year", "bom_month", "hour", "Thunderstorm"])
+    thunder_part = pd.DataFrame(columns=["bom_day", "bom_year", "bom_month", "hour", *THUNDERSTORM_MONTHLY_FIELDS])
     if thunder_hourly is not None and not thunder_hourly.empty:
-        thunder_part = thunder_hourly[["bom_day", "bom_year", "bom_month", "hour", "Thunderstorm"]].copy()
+        keep_cols = ["bom_day", "bom_year", "bom_month", "hour"]
+        for field in THUNDERSTORM_MONTHLY_FIELDS:
+            if field in thunder_hourly.columns:
+                keep_cols.append(field)
+        thunder_part = thunder_hourly[keep_cols].copy()
 
     if rain_hourly.empty and thunder_part.empty:
         return empty
@@ -1913,8 +1984,9 @@ def compute_hourly_rain_thunder_day_flags(
     )
     merged["Rain"] = merged.get("Rain", False)
     merged["Rain"] = merged["Rain"].fillna(False).astype(bool)
-    merged["Thunderstorm"] = merged.get("Thunderstorm", False)
-    merged["Thunderstorm"] = merged["Thunderstorm"].fillna(False).astype(bool)
+    for field in THUNDERSTORM_MONTHLY_FIELDS:
+        merged[field] = merged.get(field, False)
+        merged[field] = merged[field].fillna(False).astype(bool)
     return merged[columns]
 
 
@@ -1963,15 +2035,18 @@ def hourly_precip_rain_observation_counts(precip_df: pd.DataFrame) -> pd.DataFra
 def aggregate_hourly_rain_thunder_chart(hourly_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Average rain observation counts (primary) and thunder hours (secondary) by UTC hour across years."""
     empty_bars = pd.DataFrame(columns=["hour", "Type", "Count"])
-    empty_mag = pd.DataFrame(columns=["hour", "Count"])
+    empty_thunder = pd.DataFrame(columns=["hour", "Type", "Count"])
     if hourly_df.empty:
-        return empty_bars, empty_mag
+        return empty_bars, empty_thunder
 
     rain_df = hourly_df[hourly_df["Type"] == "Rain"].copy()
-    mag_df = hourly_df[
-        hourly_df["Type"].isin({HOURLY_THUNDER_HOUR_TYPE, "StrikeMagnitude"})
+    thunder_types = {HOURLY_THUNDER_HOUR_TYPE, HOURLY_THUNDER_HOUR_OUTER_TYPE, "StrikeMagnitude"}
+    thunder_df = hourly_df[
+        hourly_df["Type"].isin(thunder_types)
         & (hourly_df["year"] >= LIGHTNING_STATS_MIN_YEAR)
     ].copy()
+    if not thunder_df.empty:
+        thunder_df["Type"] = thunder_df["Type"].replace({"StrikeMagnitude": HOURLY_THUNDER_HOUR_TYPE})
 
     if rain_df.empty:
         bar_agg = empty_bars
@@ -1983,17 +2058,17 @@ def aggregate_hourly_rain_thunder_chart(hourly_df: pd.DataFrame) -> tuple[pd.Dat
             .mean()
         )
 
-    if mag_df.empty:
-        mag_agg = empty_mag
+    if thunder_df.empty:
+        thunder_agg = empty_thunder
     else:
-        mag_agg = (
-            mag_df.groupby(["year", "hour"], as_index=False)["Count"]
+        thunder_agg = (
+            thunder_df.groupby(["year", "hour", "Type"], as_index=False)["Count"]
             .sum()
-            .groupby("hour", as_index=False)["Count"]
+            .groupby(["hour", "Type"], as_index=False)["Count"]
             .mean()
         )
 
-    return bar_agg, mag_agg
+    return bar_agg, thunder_agg
 
 
 def build_hourly_rain_thunder_figure(
@@ -2016,16 +2091,37 @@ def build_hourly_rain_thunder_figure(
         .reindex(hour_numbers, fill_value=0.0)
         .astype(float)
     )
-    mag_by_hour = pd.Series(0.0, index=hour_numbers, dtype=float)
-    if magnitude_agg is not None and not magnitude_agg.empty:
-        mag_by_hour = (
-            magnitude_agg.set_index("hour")["Count"]
-            .reindex(hour_numbers, fill_value=0.0)
-            .astype(float)
-        )
 
+    near_by_hour = pd.Series(0.0, index=hour_numbers, dtype=float)
+    outer_by_hour = pd.Series(0.0, index=hour_numbers, dtype=float)
+    if magnitude_agg is not None and not magnitude_agg.empty:
+        thunder_rows = magnitude_agg.copy()
+        if "Type" not in thunder_rows.columns:
+            # Legacy single-series magnitude aggregate (hour, Count).
+            near_by_hour = (
+                thunder_rows.set_index("hour")["Count"]
+                .reindex(hour_numbers, fill_value=0.0)
+                .astype(float)
+            )
+        else:
+            near_by_hour = (
+                thunder_rows[thunder_rows["Type"].isin({HOURLY_THUNDER_HOUR_TYPE, "StrikeMagnitude"})]
+                .groupby("hour", as_index=True)["Count"]
+                .sum()
+                .reindex(hour_numbers, fill_value=0.0)
+                .astype(float)
+            )
+            outer_by_hour = (
+                thunder_rows[thunder_rows["Type"] == HOURLY_THUNDER_HOUR_OUTER_TYPE]
+                .groupby("hour", as_index=True)["Count"]
+                .sum()
+                .reindex(hour_numbers, fill_value=0.0)
+                .astype(float)
+            )
+
+    stacked_thunder = near_by_hour + outer_by_hour
     y1_max = _ceil_headroom(float(rain_by_hour.max())) if rain_by_hour.max() > 0 else 1.0
-    y2_max = _ceil_headroom(float(mag_by_hour.max())) if mag_by_hour.max() > 0 else 1.0
+    y2_max = _ceil_headroom(float(stacked_thunder.max())) if stacked_thunder.max() > 0 else 1.0
 
     fig = go.Figure()
     if not hourly_agg.empty:
@@ -2033,28 +2129,45 @@ def build_hourly_rain_thunder_figure(
             x=rain_x,
             y=rain_by_hour.tolist(),
             name="Rain",
-            marker_color="#2159d1",
+            marker_color=RAIN_DAY_COLOR,
             width=bar_width,
             customdata=hour_hover_labels,
             hovertemplate="Hour: %{customdata}<br>Rain: %{y:.2f}<extra></extra>",
         )
 
-    if magnitude_agg is not None and not magnitude_agg.empty:
+    has_thunder = bool((near_by_hour + outer_by_hour).sum() > 0)
+    if has_thunder:
         fig.add_bar(
             x=mag_x,
-            y=mag_by_hour.tolist(),
+            y=near_by_hour.tolist(),
             name=HOURLY_THUNDER_HOUR_LABEL,
             yaxis="y2",
-            marker_color="#c62828",
-            opacity=0.85,
+            marker_color=THUNDERSTORM_NEAR_COLOR,
+            opacity=0.9,
             width=bar_width,
             customdata=hour_hover_labels,
-            hovertemplate="Hour: %{customdata}<br>Thunderstorm: %{y:.1f} hours<extra></extra>",
+            hovertemplate=(
+                f"Hour: %{{customdata}}<br>{HOURLY_THUNDER_HOUR_LABEL}: %{{y:.1f}} hours<extra></extra>"
+            ),
+        )
+        fig.add_bar(
+            x=mag_x,
+            y=outer_by_hour.tolist(),
+            name=HOURLY_THUNDER_HOUR_OUTER_LABEL,
+            yaxis="y2",
+            marker_color=THUNDERSTORM_OUTER_COLOR,
+            opacity=0.9,
+            width=bar_width,
+            customdata=hour_hover_labels,
+            hovertemplate=(
+                f"Hour: %{{customdata}}<br>{HOURLY_THUNDER_HOUR_OUTER_LABEL}: %{{y:.1f}} hours<extra></extra>"
+            ),
         )
 
     fig.update_layout(
         title="Hourly Rain Observations",
         legend_title_text="Category",
+        barmode="stack",
         yaxis=dict(
             title="Avg rain hours (per year)",
             range=[0, y1_max],
@@ -2088,20 +2201,29 @@ def apply_hourly_precip_dual_axis_layout(fig: Any) -> None:
         return
 
     y1_max = 1.0
-    y2_max = 1.0
+    y2_stack_by_x: dict[float, float] = {}
     for trace in fig.data:
         if getattr(trace, "type", None) != "bar":
             continue
-        y_values = [float(v) for v in (trace.y or []) if v is not None and pd.notna(v)]
-        if not y_values:
+        xs = list(trace.x or [])
+        ys = list(trace.y or [])
+        if not ys:
             continue
-        trace_max = max(y_values)
         if getattr(trace, "yaxis", None) == "y2":
-            y2_max = max(y2_max, _ceil_headroom(trace_max))
+            for x_val, y_val in zip(xs, ys):
+                if y_val is None or pd.isna(y_val):
+                    continue
+                key = float(x_val)
+                y2_stack_by_x[key] = y2_stack_by_x.get(key, 0.0) + float(y_val)
         else:
-            y1_max = max(y1_max, _ceil_headroom(trace_max))
+            y_values = [float(v) for v in ys if v is not None and pd.notna(v)]
+            if y_values:
+                y1_max = max(y1_max, _ceil_headroom(max(y_values)))
+
+    y2_max = _ceil_headroom(max(y2_stack_by_x.values())) if y2_stack_by_x else 1.0
 
     fig.update_layout(
+        barmode="stack",
         yaxis={
             **(fig.layout.yaxis.to_plotly_json() if fig.layout.yaxis else {}),
             "range": [0, y1_max],
@@ -2121,6 +2243,123 @@ def apply_hourly_precip_dual_axis_layout(fig: Any) -> None:
     if fig.layout.yaxis2 is not None:
         fig.layout.yaxis2.domain = None
     fig.update_xaxes(range=[-0.8, 23.8], showgrid=False)
+
+
+def average_monthly_rain_thunder_from_counts(monthly_counts: pd.DataFrame) -> pd.DataFrame:
+    """Average rain/thunder day counts by month; thunder bands use lightning years only."""
+    empty = pd.DataFrame(columns=["month", *RAIN_THUNDER_MONTHLY_VALUE_FIELDS])
+    if monthly_counts.empty:
+        return empty
+
+    work = monthly_counts.copy()
+    for field in RAIN_THUNDER_MONTHLY_VALUE_FIELDS:
+        if field not in work.columns:
+            work[field] = 0.0
+
+    rain_avg_m = (
+        work.groupby("bom_month", as_index=False)["Rain"]
+        .mean()
+        .rename(columns={"bom_month": "month"})
+    )
+    ts_years = work[work["bom_year"] >= LIGHTNING_STATS_MIN_YEAR]
+    if ts_years.empty:
+        monthly_avg = rain_avg_m.copy()
+        for field in THUNDERSTORM_MONTHLY_FIELDS:
+            monthly_avg[field] = 0.0
+        return monthly_avg
+
+    ts_avg_m = (
+        ts_years.groupby("bom_month", as_index=False)[list(THUNDERSTORM_MONTHLY_FIELDS)]
+        .mean()
+        .rename(columns={"bom_month": "month"})
+    )
+    monthly_avg = rain_avg_m.merge(ts_avg_m, on="month", how="left")
+    for field in THUNDERSTORM_MONTHLY_FIELDS:
+        monthly_avg[field] = monthly_avg[field].fillna(0.0)
+    return monthly_avg
+
+
+def build_rain_thunder_days_figure(
+    monthly_avg: pd.DataFrame,
+    month_numbers: list[int],
+    *,
+    title: str,
+) -> go.Figure | None:
+    """Paired columns: Rain group + stacked TS (<8km) / TS (8-16km)."""
+    if monthly_avg.empty:
+        return None
+
+    work = monthly_avg.copy()
+    for field in RAIN_THUNDER_MONTHLY_VALUE_FIELDS:
+        if field not in work.columns:
+            work[field] = 0.0
+
+    month_name_order = month_labels_for_numbers(month_numbers)
+    work = work[work["month"].isin(month_numbers)].copy()
+    if work.empty:
+        return None
+    work["Month"] = work["month"].apply(lambda m: MONTH_NAMES[m - 1])
+    work["Month"] = pd.Categorical(work["Month"], categories=month_name_order, ordered=True)
+    work = work.sort_values("Month")
+
+    month_positions = list(range(1, len(month_numbers) + 1))
+    month_labels = month_name_order
+    by_month = work.set_index("Month").reindex(month_labels)
+    rain_vals = by_month["Rain"].fillna(0.0).astype(float).tolist()
+    near_vals = by_month[THUNDERSTORM_NEAR_FIELD].fillna(0.0).astype(float).tolist()
+    outer_vals = by_month[THUNDERSTORM_OUTER_FIELD].fillna(0.0).astype(float).tolist()
+
+    rain_x = [month - 0.22 for month in month_positions]
+    ts_x = [month + 0.22 for month in month_positions]
+    bar_width = 0.38
+
+    fig = go.Figure()
+    fig.add_bar(
+        x=rain_x,
+        y=rain_vals,
+        name="Rain",
+        marker_color=RAIN_DAY_COLOR,
+        width=bar_width,
+        customdata=month_labels,
+        hovertemplate="Month: %{customdata}<br>Rain: %{y:.2f}<extra></extra>",
+    )
+    fig.add_bar(
+        x=ts_x,
+        y=near_vals,
+        name=THUNDERSTORM_NEAR_LEGEND_LABEL,
+        marker_color=THUNDERSTORM_NEAR_COLOR,
+        width=bar_width,
+        customdata=month_labels,
+        hovertemplate=(
+            f"Month: %{{customdata}}<br>{THUNDERSTORM_NEAR_LEGEND_LABEL}: %{{y:.2f}}<extra></extra>"
+        ),
+    )
+    fig.add_bar(
+        x=ts_x,
+        y=outer_vals,
+        name=THUNDERSTORM_OUTER_LEGEND_LABEL,
+        marker_color=THUNDERSTORM_OUTER_COLOR,
+        width=bar_width,
+        customdata=month_labels,
+        hovertemplate=(
+            f"Month: %{{customdata}}<br>{THUNDERSTORM_OUTER_LEGEND_LABEL}: %{{y:.2f}}<extra></extra>"
+        ),
+    )
+    fig.update_layout(
+        title=title,
+        barmode="stack",
+        legend_title_text="Category",
+        yaxis_title="Avg Days/Month",
+    )
+    fig.update_xaxes(
+        title_text="",
+        tickmode="array",
+        tickvals=month_positions,
+        ticktext=month_labels,
+        showgrid=False,
+        range=[0.2, len(month_positions) + 0.8],
+    )
+    return fig
 
 
 def fog_observation_mask(df: pd.DataFrame) -> pd.Series:
@@ -2651,57 +2890,24 @@ def build_overview_rain_thunder_figure_from_precomputed(
 
     # Match live precipitation-tab behavior: compute monthly totals per year first,
     # then average those year-level totals by month.
+    for field in RAIN_THUNDER_MONTHLY_VALUE_FIELDS:
+        if field not in monthly_counts.columns:
+            monthly_counts[field] = 0.0
     monthly_counts = (
-        monthly_counts.groupby(["bom_year", "bom_month"], as_index=False)[["Rain", "Thunderstorm"]]
+        monthly_counts.groupby(["bom_year", "bom_month"], as_index=False)[list(RAIN_THUNDER_MONTHLY_VALUE_FIELDS)]
         .sum()
     )
     if monthly_counts.empty:
         return None
 
-    rain_avg_m = (
-        monthly_counts.groupby("bom_month", as_index=False)["Rain"]
-        .mean()
-        .rename(columns={"bom_month": "month"})
-    )
-    ts_avg_m = (
-        monthly_counts[monthly_counts["bom_year"] >= LIGHTNING_STATS_MIN_YEAR]
-        .groupby("bom_month", as_index=False)["Thunderstorm"]
-        .mean()
-        .rename(columns={"bom_month": "month"})
-    )
-
-    monthly_avg = rain_avg_m.merge(ts_avg_m, on="month", how="left")
-    monthly_avg["Thunderstorm"] = monthly_avg["Thunderstorm"].fillna(0.0)
+    monthly_avg = average_monthly_rain_thunder_from_counts(monthly_counts)
     if monthly_avg.empty:
         return None
-
-    month_name_order = month_labels_for_numbers(month_numbers)
-    monthly_avg = monthly_avg[monthly_avg["month"].isin(month_numbers)].copy()
-    monthly_avg["Month"] = monthly_avg["month"].apply(lambda m: MONTH_NAMES[m - 1])
-    monthly_avg["Month"] = pd.Categorical(monthly_avg["Month"], categories=month_name_order, ordered=True)
-    monthly_avg = monthly_avg.sort_values("Month")
-
-    rain_avg = monthly_avg.melt(
-        id_vars=["month", "Month"],
-        value_vars=["Rain", "Thunderstorm"],
-        var_name="Type",
-        value_name="Count",
-    )
-    rain_avg["Type"] = rain_avg["Type"].replace({"Thunderstorm": THUNDERSTORM_LEGEND_LABEL})
-
-    fig_rain = px.bar(
-        rain_avg,
-        x="Month",
-        y="Count",
-        color="Type",
-        barmode="group",
-        color_discrete_map={"Rain": "#2159d1", THUNDERSTORM_LEGEND_LABEL: "#c62828"},
-        labels={"Count": "Avg Days/Month", "Type": "Category"},
+    return build_rain_thunder_days_figure(
+        monthly_avg,
+        month_numbers,
         title="Rain/Thunderstorm Days",
-        category_orders={"Month": month_name_order, "Type": ["Rain", THUNDERSTORM_LEGEND_LABEL]},
     )
-    fig_rain.update_xaxes(title_text="")
-    return fig_rain
 
 
 def build_overview_wind_rose_figure_from_precomputed(
@@ -3197,22 +3403,10 @@ def _lightning_heatmap_z_grid(z: list[list[float]]) -> tuple[list[list[float | N
 
 
 def _lightning_heatmap_ring_shapes() -> list[dict]:
-    shapes: list[dict] = []
-    for radius in LIGHTNING_HEATMAP_RING_RADII_KM:
-        shapes.append(
-            dict(
-                type="circle",
-                xref="x",
-                yref="y",
-                x0=-radius,
-                y0=-radius,
-                x1=radius,
-                y1=radius,
-                line=dict(color="rgba(255,255,255,0.95)", width=1.5),
-                fillcolor="rgba(0,0,0,0)",
-            )
-        )
-    return shapes
+    # Intentionally empty: 8/16 km rings are drawn client-side as scatter
+    # traces only. Emitting Plotly circle shapes here stacked with those
+    # traces into a high-contrast concentric bullseye on Local zoom.
+    return []
 
 
 def build_precip_cloud_vis_heatmap(cloud_vis_df: pd.DataFrame, icao: str = "") -> go.Figure | None:
@@ -3305,12 +3499,9 @@ def build_lightning_heatmap_figure(lightning_df: pd.DataFrame, icao: str) -> go.
             if not cell_intersects_lightning_disk(xc, yc, half_cell, radius_km):
                 z[j][i] = 0.0
 
-    shapes = _lightning_heatmap_ring_shapes()
-
     coords = airport_lat_lon(icao)
     topo_crop_km = topo_crop_extent_km(float(coords[0])) if coords else extent_km
     topo_display_km = topo_display_extent_km(icao)
-    half_topo = topo_display_km / 2.0
     z_display, z_min, z_max = _lightning_heatmap_z_grid(z)
 
     fig = go.Figure(
@@ -3334,7 +3525,7 @@ def build_lightning_heatmap_figure(lightning_df: pd.DataFrame, icao: str) -> go.
             title="",
             scaleanchor="y",
             scaleratio=1,
-            range=[-half_topo, half_topo],
+            range=[-half_extent, half_extent],
             showgrid=False,
             zeroline=False,
             showline=False,
@@ -3346,7 +3537,7 @@ def build_lightning_heatmap_figure(lightning_df: pd.DataFrame, icao: str) -> go.
         ),
         yaxis=dict(
             title="",
-            range=[-half_topo, half_topo],
+            range=[-half_extent, half_extent],
             showgrid=False,
             zeroline=False,
             showline=False,
@@ -3356,7 +3547,9 @@ def build_lightning_heatmap_figure(lightning_df: pd.DataFrame, icao: str) -> go.
             tickvals=[0.0],
             ticktext=[""],
         ),
-        shapes=shapes,
+        # Keep shapes empty so stale lite shards / uirevision cannot rehydrate
+        # stacked circle rings alongside frontend scatter traces.
+        shapes=_lightning_heatmap_ring_shapes(),
         meta={
             "topoExtentKm": topo_display_km,
             "topoCropExtentKm": topo_crop_km,
@@ -3470,48 +3663,20 @@ def build_precipitation_figures_from_precomputed(
             mjo=mjo,
         )
         if not monthly_df.empty:
+            for field in RAIN_THUNDER_MONTHLY_VALUE_FIELDS:
+                if field not in monthly_df.columns:
+                    monthly_df[field] = 0.0
             monthly_df = (
-                monthly_df.groupby(["bom_year", "bom_month"], as_index=False)[["Rain", "Thunderstorm"]]
+                monthly_df.groupby(["bom_year", "bom_month"], as_index=False)[list(RAIN_THUNDER_MONTHLY_VALUE_FIELDS)]
                 .sum()
             )
-            rain_avg_m = (
-                monthly_df.groupby("bom_month", as_index=False)["Rain"]
-                .mean()
-                .rename(columns={"bom_month": "month"})
+            monthly_avg = average_monthly_rain_thunder_from_counts(monthly_df)
+            fig_precip = build_rain_thunder_days_figure(
+                monthly_avg,
+                month_numbers,
+                title="Monthly Rain/Thunderstorm Days",
             )
-            ts_avg_m = (
-                monthly_df[monthly_df["bom_year"] >= LIGHTNING_STATS_MIN_YEAR]
-                .groupby("bom_month", as_index=False)["Thunderstorm"]
-                .mean()
-                .rename(columns={"bom_month": "month"})
-            )
-            monthly_avg = rain_avg_m.merge(ts_avg_m, on="month", how="left")
-            monthly_avg["Thunderstorm"] = monthly_avg["Thunderstorm"].fillna(0.0)
-            monthly_avg = monthly_avg[monthly_avg["month"].isin(month_numbers)].copy()
-            if not monthly_avg.empty:
-                month_name_order = month_labels_for_numbers(month_numbers)
-                monthly_avg["Month"] = monthly_avg["month"].apply(lambda m: MONTH_NAMES[m - 1])
-                monthly_avg["Month"] = pd.Categorical(monthly_avg["Month"], categories=month_name_order, ordered=True)
-                monthly_avg = monthly_avg.sort_values("Month")
-                monthly_precip = monthly_avg.melt(
-                    id_vars=["month", "Month"],
-                    value_vars=["Rain", "Thunderstorm"],
-                    var_name="Type",
-                    value_name="Count",
-                )
-                monthly_precip["Type"] = monthly_precip["Type"].replace({"Thunderstorm": THUNDERSTORM_LEGEND_LABEL})
-                fig_precip = px.bar(
-                    monthly_precip,
-                    x="Month",
-                    y="Count",
-                    color="Type",
-                    barmode="group",
-                    color_discrete_map={"Rain": "#2159d1", THUNDERSTORM_LEGEND_LABEL: "#c62828"},
-                    labels={"Count": "Avg Days/Month", "Type": "Category"},
-                    title="Monthly Rain/Thunderstorm Days",
-                    category_orders={"Month": month_name_order, "Type": ["Rain", THUNDERSTORM_LEGEND_LABEL]},
-                )
-                fig_precip.update_xaxes(title_text="")
+            if fig_precip is not None:
                 figures["monthly_precip"] = fig_precip
 
     split_rows = payload.get("split", [])
@@ -5495,17 +5660,27 @@ def compute_airport_y_ceilings(
             if not rain_pd.empty:
                 _, daily_flags = compute_daily_weather_flags(rain_pd, icao)
                 if not daily_flags.empty:
+                    for field in RAIN_THUNDER_MONTHLY_VALUE_FIELDS:
+                        if field not in daily_flags.columns:
+                            daily_flags[field] = False
                     mc = (
-                        daily_flags.groupby(["bom_year", "bom_month"], as_index=False)
-                        .agg(Rain=("Rain", "sum"), Thunderstorm=("Thunderstorm", "sum"))
+                        daily_flags.groupby(["bom_year", "bom_month"], as_index=False)[list(RAIN_THUNDER_MONTHLY_VALUE_FIELDS)]
+                        .sum()
                     )
-                    avg = mc.groupby("bom_month")[["Rain", "Thunderstorm"]].mean()
-                    max_val = float(avg.max().max()) if not avg.empty else 0.0
-                    ceiling = _ceil_headroom(max_val)
-                    if "rain_thunder" in needed:
-                        ceilings["rain_thunder"] = ceiling
-                    if "monthly_precip" in needed:
-                        ceilings["monthly_precip"] = ceiling
+                    monthly_avg = average_monthly_rain_thunder_from_counts(mc)
+                    if not monthly_avg.empty:
+                        rain_max = float(monthly_avg["Rain"].max())
+                        ts_stack_max = float(
+                            (
+                                monthly_avg[THUNDERSTORM_NEAR_FIELD].fillna(0.0)
+                                + monthly_avg[THUNDERSTORM_OUTER_FIELD].fillna(0.0)
+                            ).max()
+                        )
+                        ceiling = _ceil_headroom(max(rain_max, ts_stack_max))
+                        if "rain_thunder" in needed:
+                            ceilings["rain_thunder"] = ceiling
+                        if "monthly_precip" in needed:
+                            ceilings["monthly_precip"] = ceiling
         except Exception:
             pass
 
@@ -5529,22 +5704,31 @@ def compute_airport_y_ceilings(
                         "Count": float(row["Count"]),
                     })
                 if not strike_hourly.empty:
-                    thunder_counts = hourly_thunder_hour_counts(strike_hourly)
-                    for row in thunder_counts.to_dict(orient="records"):
-                        hourly_rows.append({
-                            "year": int(row["bom_year"]),
-                            "month": int(row["bom_month"]),
-                            "hour": int(row["hour"]),
-                            "Type": HOURLY_THUNDER_HOUR_TYPE,
-                            "Count": float(row["Count"]),
-                        })
+                    for flag_column, type_name in (
+                        (THUNDERSTORM_NEAR_FIELD, HOURLY_THUNDER_HOUR_TYPE),
+                        (THUNDERSTORM_OUTER_FIELD, HOURLY_THUNDER_HOUR_OUTER_TYPE),
+                    ):
+                        thunder_counts = hourly_thunder_hour_counts(strike_hourly, flag_column=flag_column)
+                        for row in thunder_counts.to_dict(orient="records"):
+                            hourly_rows.append({
+                                "year": int(row["bom_year"]),
+                                "month": int(row["bom_month"]),
+                                "hour": int(row["hour"]),
+                                "Type": type_name,
+                                "Count": float(row["Count"]),
+                            })
                 if hourly_rows:
                     hourly_df = pd.DataFrame(hourly_rows)
                     bar_agg, mag_agg = aggregate_hourly_rain_thunder_chart(hourly_df)
                     if "hourly_precip" in needed and not bar_agg.empty:
                         ceilings["hourly_precip"] = _ceil_headroom(float(bar_agg["Count"].max()))
                     if "hourly_precip_y2" in needed and not mag_agg.empty:
-                        ceilings["hourly_precip_y2"] = _ceil_headroom(float(mag_agg["Count"].max()))
+                        stack = (
+                            mag_agg.pivot_table(index="hour", columns="Type", values="Count", aggfunc="sum")
+                            .fillna(0.0)
+                        )
+                        stack_max = float(stack.sum(axis=1).max()) if not stack.empty else 0.0
+                        ceilings["hourly_precip_y2"] = _ceil_headroom(stack_max)
         except Exception:
             pass
 
@@ -5729,15 +5913,17 @@ def compute_airport_y_ceilings(
 
 
 def frontend_asset_version() -> str:
-    """Bust browser caches whenever the frontend sources change."""
-    stamp = 0
+    """Bust browser caches whenever frontend source bytes change."""
+    digest = hashlib.sha256()
     for name in ("app.js", "styles.css", "index.html"):
         path = os.path.join(FRONTEND_DIR, name)
         try:
-            stamp = max(stamp, int(os.path.getmtime(path)))
+            with open(path, "rb") as handle:
+                digest.update(handle.read())
         except OSError:
-            pass
-    return str(stamp or int(time.time()))
+            digest.update(name.encode("utf-8"))
+            digest.update(str(time.time()).encode("utf-8"))
+    return digest.hexdigest()[:12]
 
 
 @app.get("/")
@@ -5758,7 +5944,7 @@ def frontend_styles() -> FileResponse:
     return FileResponse(
         os.path.join(FRONTEND_DIR, "styles.css"),
         media_type="text/css",
-        headers={"Cache-Control": "no-cache"},
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -5767,7 +5953,17 @@ def frontend_javascript() -> FileResponse:
     return FileResponse(
         os.path.join(FRONTEND_DIR, "app.js"),
         media_type="application/javascript",
-        headers={"Cache-Control": "no-cache"},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/js/{version}/app.js")
+def frontend_javascript_versioned(version: str) -> FileResponse:
+    # Versioned path so Safari cannot reuse a stale /app.js?v=… disk cache entry.
+    return FileResponse(
+        os.path.join(FRONTEND_DIR, "app.js"),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -6516,54 +6712,23 @@ def charts(
                 if not rain_df.empty:
                     rain_days, daily_flags = compute_daily_weather_flags(rain_df, icao)
                     if not rain_days.empty:
+                        for field in RAIN_THUNDER_MONTHLY_VALUE_FIELDS:
+                            if field not in daily_flags.columns:
+                                daily_flags[field] = False
                         monthly_counts = (
-                            daily_flags.groupby(["bom_year", "bom_month"], as_index=False)
-                            .agg(
-                                Rain=("Rain", "sum"),
-                                Thunderstorm=("Thunderstorm", "sum"),
-                            )
+                            daily_flags.groupby(["bom_year", "bom_month"], as_index=False)[list(RAIN_THUNDER_MONTHLY_VALUE_FIELDS)]
+                            .sum()
                         )
-                        # Rain: average over all selected years.
-                        rain_avg_m = (
-                            monthly_counts.groupby("bom_month", as_index=False)["Rain"]
-                            .mean()
-                            .rename(columns={"bom_month": "month"})
-                        )
-                        # Thunderstorm: average only over years >= LIGHTNING_STATS_MIN_YEAR.
-                        ts_avg_m = (
-                            monthly_counts[monthly_counts["bom_year"] >= LIGHTNING_STATS_MIN_YEAR]
-                            .groupby("bom_month", as_index=False)["Thunderstorm"]
-                            .mean()
-                            .rename(columns={"bom_month": "month"})
-                        )
-                        monthly_avg = rain_avg_m.merge(ts_avg_m, on="month", how="left")
-                        monthly_avg["Thunderstorm"] = monthly_avg["Thunderstorm"].fillna(0.0)
-                        monthly_avg = monthly_avg[monthly_avg["month"].isin(month_number_order)].copy()
-                        monthly_avg["Month"] = monthly_avg["month"].apply(lambda m: MONTH_NAMES[m - 1])
-                        monthly_avg["Month"] = pd.Categorical(monthly_avg["Month"], categories=month_name_order, ordered=True)
-                        monthly_avg = monthly_avg.sort_values("Month")
-                        rain_avg = monthly_avg.melt(
-                            id_vars=["month", "Month"],
-                            value_vars=["Rain", "Thunderstorm"],
-                            var_name="Type",
-                            value_name="Count",
-                        )
-                        rain_avg["Type"] = rain_avg["Type"].replace({"Thunderstorm": THUNDERSTORM_LEGEND_LABEL})
-                        fig_rain = px.bar(
-                            rain_avg,
-                            x="Month",
-                            y="Count",
-                            color="Type",
-                            barmode="group",
-                            color_discrete_map={"Rain": "#2159d1", THUNDERSTORM_LEGEND_LABEL: "#c62828"},
-                            labels={"Count": "Avg Days/Month", "Type": "Category"},
+                        monthly_avg = average_monthly_rain_thunder_from_counts(monthly_counts)
+                        fig_rain = build_rain_thunder_days_figure(
+                            monthly_avg,
+                            month_number_order,
                             title="Rain/Thunderstorm Days",
-                            category_orders={"Month": month_name_order, "Type": ["Rain", THUNDERSTORM_LEGEND_LABEL]},
                         )
-                        fig_rain.update_xaxes(title_text="")
-                        apply_common_layout(fig_rain)
-                        apply_grouped_bar_stable_layout(fig_rain)
-                        figures.append(fig_payload("rain_thunder", fig_rain))
+                        if fig_rain is not None:
+                            apply_common_layout(fig_rain)
+                            apply_grouped_bar_stable_layout(fig_rain)
+                            figures.append(fig_payload("rain_thunder", fig_rain))
 
         if wants_figure("temp_dewpoint"):
             if guard_before("overview.temp_dewpoint"):
@@ -6803,55 +6968,24 @@ def charts(
             precip_days, daily_flags = compute_daily_weather_flags(precip_df, icao)
 
             if not precip_days.empty:
+                for field in RAIN_THUNDER_MONTHLY_VALUE_FIELDS:
+                    if field not in daily_flags.columns:
+                        daily_flags[field] = False
                 monthly_counts = (
-                    daily_flags.groupby(["bom_year", "bom_month"], as_index=False)
-                    .agg(
-                        Rain=("Rain", "sum"),
-                        Thunderstorm=("Thunderstorm", "sum"),
-                    )
+                    daily_flags.groupby(["bom_year", "bom_month"], as_index=False)[list(RAIN_THUNDER_MONTHLY_VALUE_FIELDS)]
+                    .sum()
                 )
-
-                rain_avg_m = (
-                    monthly_counts.groupby("bom_month", as_index=False)["Rain"]
-                    .mean()
-                    .rename(columns={"bom_month": "month"})
-                )
-                ts_avg_m = (
-                    monthly_counts[monthly_counts["bom_year"] >= LIGHTNING_STATS_MIN_YEAR]
-                    .groupby("bom_month", as_index=False)["Thunderstorm"]
-                    .mean()
-                    .rename(columns={"bom_month": "month"})
-                )
-                monthly_avg = rain_avg_m.merge(ts_avg_m, on="month", how="left")
-                monthly_avg["Thunderstorm"] = monthly_avg["Thunderstorm"].fillna(0.0)
-                monthly_avg = monthly_avg[monthly_avg["month"].isin(month_number_order)].copy()
-                monthly_avg["Month"] = monthly_avg["month"].apply(lambda m: MONTH_NAMES[m - 1])
-                monthly_avg["Month"] = pd.Categorical(monthly_avg["Month"], categories=month_name_order, ordered=True)
-                monthly_avg = monthly_avg.sort_values("Month")
-                monthly_precip = monthly_avg.melt(
-                    id_vars=["month", "Month"],
-                    value_vars=["Rain", "Thunderstorm"],
-                    var_name="Type",
-                    value_name="Count",
-                )
-                monthly_precip["Type"] = monthly_precip["Type"].replace({"Thunderstorm": THUNDERSTORM_LEGEND_LABEL})
-
-                fig_precip = px.bar(
-                    monthly_precip,
-                    x="Month",
-                    y="Count",
-                    color="Type",
-                    barmode="group",
-                    color_discrete_map={"Rain": "#2159d1", THUNDERSTORM_LEGEND_LABEL: "#c62828"},
-                    labels={"Count": "Avg Days/Month", "Type": "Category"},
+                monthly_avg = average_monthly_rain_thunder_from_counts(monthly_counts)
+                fig_precip = build_rain_thunder_days_figure(
+                    monthly_avg,
+                    month_number_order,
                     title="Monthly Rain/Thunderstorm Days",
-                    category_orders={"Month": month_name_order, "Type": ["Rain", THUNDERSTORM_LEGEND_LABEL]},
                 )
-                fig_precip.update_xaxes(title_text="")
-                apply_common_layout(fig_precip)
-                apply_grouped_bar_stable_layout(fig_precip)
-                figures.append(fig_payload("monthly_precip", fig_precip))
-                monthly_precip_added = True
+                if fig_precip is not None:
+                    apply_common_layout(fig_precip)
+                    apply_grouped_bar_stable_layout(fig_precip)
+                    figures.append(fig_payload("monthly_precip", fig_precip))
+                    monthly_precip_added = True
 
         if not precip_df.empty:
             vis_df = precip_df.copy()
@@ -6890,15 +7024,19 @@ def charts(
                     "Count": float(row["Count"]),
                 })
             if not strike_hourly.empty:
-                thunder_counts = hourly_thunder_hour_counts(strike_hourly)
-                for row in thunder_counts.to_dict(orient="records"):
-                    hourly_rows.append({
-                        "year": int(row["bom_year"]),
-                        "month": int(row["bom_month"]),
-                        "hour": int(row["hour"]),
-                        "Type": HOURLY_THUNDER_HOUR_TYPE,
-                        "Count": float(row["Count"]),
-                    })
+                for flag_column, type_name in (
+                    (THUNDERSTORM_NEAR_FIELD, HOURLY_THUNDER_HOUR_TYPE),
+                    (THUNDERSTORM_OUTER_FIELD, HOURLY_THUNDER_HOUR_OUTER_TYPE),
+                ):
+                    thunder_counts = hourly_thunder_hour_counts(strike_hourly, flag_column=flag_column)
+                    for row in thunder_counts.to_dict(orient="records"):
+                        hourly_rows.append({
+                            "year": int(row["bom_year"]),
+                            "month": int(row["bom_month"]),
+                            "hour": int(row["hour"]),
+                            "Type": type_name,
+                            "Count": float(row["Count"]),
+                        })
             if hourly_rows:
                 hourly_df = pd.DataFrame(hourly_rows)
                 hourly_agg, magnitude_agg = aggregate_hourly_rain_thunder_chart(hourly_df)

@@ -4,8 +4,33 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Aviation climatology</title>
+  <meta name="avclimate-build" content="__ASSET_VERSION__">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css?v=__ASSET_VERSION__">
+  <style id="av-top-chrome-critical">
+    .chart-card-top-chrome,
+    .chart-mode-toolbar-slot { display: none !important; }
+    .chart-card-toolbar:not(.hidden),
+    .chart-card-toolbar.is-mode-toolbar-pinned {
+      position: absolute !important;
+      top: 5px !important;
+      right: 14px !important;
+      left: auto !important;
+      margin: 0 !important;
+      z-index: 7;
+      pointer-events: none;
+    }
+    .chart-card-toolbar:not(.hidden) #wr-hour-scroller-container,
+    .chart-card-toolbar.is-mode-toolbar-pinned.is-wind-toolbar #wr-hour-scroller-container {
+      position: absolute !important;
+      top: calc(100% + 4px) !important;
+      left: 50% !important;
+      transform: translateX(-50%) !important;
+    }
+  </style>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body class="lite-mode">
@@ -139,6 +164,6 @@
     </div>
   </main>
 
-  <script src="app.js?v=__ASSET_VERSION__"></script>
+  <script src="/js/__ASSET_VERSION__/app.js"></script>
 </body>
 </html>

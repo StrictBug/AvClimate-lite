@@ -86,12 +86,12 @@ def _monthly_rows_for_state(df_state: pd.DataFrame, icao: str, state: dict[str, 
     if daily_flags.empty:
         return []
 
+    for field in backend.RAIN_THUNDER_MONTHLY_VALUE_FIELDS:
+        if field not in daily_flags.columns:
+            daily_flags[field] = False
     monthly_counts = (
-        daily_flags.groupby(["bom_year", "bom_month"], as_index=False)
-        .agg(
-            Rain=("Rain", "sum"),
-            Thunderstorm=("Thunderstorm", "sum"),
-        )
+        daily_flags.groupby(["bom_year", "bom_month"], as_index=False)[list(backend.RAIN_THUNDER_MONTHLY_VALUE_FIELDS)]
+        .sum()
         .sort_values(["bom_year", "bom_month"])
     )
 
@@ -106,7 +106,8 @@ def _monthly_rows_for_state(df_state: pd.DataFrame, icao: str, state: dict[str, 
                 "sam_norm": state["sam_norm"],
                 "mjo_norm": state["mjo_norm"],
                 "Rain": float(row["Rain"]),
-                "Thunderstorm": float(row["Thunderstorm"]),
+                backend.THUNDERSTORM_NEAR_FIELD: float(row[backend.THUNDERSTORM_NEAR_FIELD]),
+                backend.THUNDERSTORM_OUTER_FIELD: float(row[backend.THUNDERSTORM_OUTER_FIELD]),
             }
         )
     return rows
@@ -135,21 +136,25 @@ def _hourly_count_rows_from_obs_counts(
             )
 
     if not strike_hourly.empty:
-        thunder_counts = backend.hourly_thunder_hour_counts(strike_hourly)
-        for row in thunder_counts.to_dict(orient="records"):
-            rows.append(
-                {
-                    "year": int(row["bom_year"]),
-                    "month": int(row["bom_month"]),
-                    "hour": int(row["hour"]),
-                    "enso_norm": state["enso_norm"],
-                    "iod_norm": state["iod_norm"],
-                    "sam_norm": state["sam_norm"],
-                    "mjo_norm": state["mjo_norm"],
-                    "Type": backend.HOURLY_THUNDER_HOUR_TYPE,
-                    "Count": float(row["Count"]),
-                }
-            )
+        for flag_column, type_name in (
+            (backend.THUNDERSTORM_NEAR_FIELD, backend.HOURLY_THUNDER_HOUR_TYPE),
+            (backend.THUNDERSTORM_OUTER_FIELD, backend.HOURLY_THUNDER_HOUR_OUTER_TYPE),
+        ):
+            thunder_counts = backend.hourly_thunder_hour_counts(strike_hourly, flag_column=flag_column)
+            for row in thunder_counts.to_dict(orient="records"):
+                rows.append(
+                    {
+                        "year": int(row["bom_year"]),
+                        "month": int(row["bom_month"]),
+                        "hour": int(row["hour"]),
+                        "enso_norm": state["enso_norm"],
+                        "iod_norm": state["iod_norm"],
+                        "sam_norm": state["sam_norm"],
+                        "mjo_norm": state["mjo_norm"],
+                        "Type": type_name,
+                        "Count": float(row["Count"]),
+                    }
+                )
     return rows
 
 
